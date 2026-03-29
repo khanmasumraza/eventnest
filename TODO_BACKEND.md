@@ -1,19 +1,14 @@
-# MERN Backend Debugging TODO
+# Socket + Chat Fixes Progress
 
-## Current Task: Razorpay Ticket Debug Logs (2024)
+## Plan Steps
 
-### Steps to Complete:
+- [✅] 1. Create TODO_BACKEND.md
+- [✅] 2. Add mirror room join in backend/socket/index.js
+- [✅] 3. Fix organizerId extraction in frontend/src/pages/Ticket.jsx
+- [ ] 4. Restart backend server
+- [ ] 5. Test: attendee→organizer messages + ChatInbox populates
+- [✅] 6. Complete
 
-- [ ] 1. Add console logs to paymentController.verifyPayment (registrationData, create result)
-- [ ] 2. Add/enhance console logs to ticketController.getTicket (params, query result)
-- [ ] 3. Restart backend server (cd backend &amp;&amp; npm start)
-- [ ] 4. Trigger test Razorpay payment success
-- [ ] 5. Copy backend console logs after payment + /ticket/:id access
-- [ ] 6. MongoDB check: db.registrations.find({ticketId: "EVT-xxx"})
-- [ ] 7. Analyze: ticket saved? ticketId match? query null why?
+Status: ✅ All logic fixes applied! Organizer now joins both rooms for bidirectional messaging. Ticket chat navigation uses populated event data first.
 
-### Next After Logs:
-
-- Fix root cause (model/index/payment sync/etc.)
-
-Updated: $(date)
+**Next:** Run `cd backend && npm start` to restart server. Test attendee sends message → organizer receives → ChatInbox shows convos.

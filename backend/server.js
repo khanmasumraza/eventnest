@@ -102,11 +102,16 @@ app.use(passport.initialize())
 console.log('Passport initialized')
 
 /* ================= SOCKET ================= */
-const { initializeSocket } = require('./socket')
-initializeSocket(server)
+/* Socket.io handled by backend/socket/index.js */
 
 /* ================= STATIC ================= */
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+
+/* ================= SOCKET ================= */
+const socketHandlers = require('./socket')
+socketHandlers.initializeSocket(server)
+
+console.log('Socket handlers initialized')
 
 /* ================= ROUTES ================= */
 const authRoutes = require('./routes/authRoutes')
@@ -116,6 +121,7 @@ const registrationRoutes = require('./routes/registrationRoutes')
 const paymentSetupRoutes = require('./routes/paymentSetupRoutes')
 const organizerRoutes = require('./routes/organizerRoutes')
 const ticketRoutes = require('./routes/ticketRoutes')
+const chatRoutes = require('./routes/chatRoutes')
 
 app.get('/', (req, res) => {
   res.send('Welcome to EventNest API')
@@ -124,6 +130,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/events', eventRoutes)
 app.use('/api/payments', paymentRoutes)
+app.use('/api/chat', chatRoutes)
 app.use('/api/payouts', require('./routes/payoutRoutes'))
 app.use('/api/registrations', registrationRoutes)
 app.use('/api/organizer', organizerRoutes)

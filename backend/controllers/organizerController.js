@@ -71,13 +71,13 @@ const getDashboardStats = async (req, res) => {
         revenue,
         pendingPayments,
         checkedIn,
-      }
+      },
     })
   } catch (error) {
     console.error('Get dashboard stats error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching dashboard statistics' 
+      message: 'Error fetching dashboard statistics',
     })
   }
 }
@@ -89,10 +89,15 @@ const createEvent = async (req, res) => {
     const eventData = req.body
 
     // Basic validation
-    if (!eventData.title || !eventData.description || !eventData.capacity || !eventData.date) {
+    if (
+      !eventData.title ||
+      !eventData.description ||
+      !eventData.capacity ||
+      !eventData.date
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: title, description, capacity, date'
+        message: 'Missing required fields: title, description, capacity, date',
       })
     }
 
@@ -100,7 +105,7 @@ const createEvent = async (req, res) => {
     const newEvent = new Event({
       ...eventData,
       organiser: organizerId,
-      status: 'pending' // Organizer created → pending admin approval
+      status: 'pending', // Organizer created → pending admin approval
     })
 
     await newEvent.save()
@@ -109,15 +114,15 @@ const createEvent = async (req, res) => {
       success: true,
       message: 'Event created successfully',
       data: {
-        event: newEvent
-      }
+        event: newEvent,
+      },
     })
   } catch (error) {
     console.error('Create event error:', error)
     res.status(500).json({
       success: false,
       message: 'Error creating event',
-      error: error.message
+      error: error.message,
     })
   }
 }
@@ -132,16 +137,16 @@ const getEventAttendees = async (req, res) => {
     // Verify event belongs to organizer
     const event = await Event.findById(eventId)
     if (!event) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Event not found' 
+        message: 'Event not found',
       })
     }
 
     if (event.organiser.toString() !== organizerId) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         success: false,
-        message: 'Access denied' 
+        message: 'Access denied',
       })
     }
 
@@ -196,13 +201,13 @@ const getEventAttendees = async (req, res) => {
           total,
           pages: Math.ceil(total / parseInt(limit)),
         },
-      }
+      },
     })
   } catch (error) {
     console.error('Get attendees error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching attendees' 
+      message: 'Error fetching attendees',
     })
   }
 }
@@ -231,13 +236,13 @@ const getEventMessages = async (req, res) => {
           total,
           pages: Math.ceil(total / parseInt(limit)),
         },
-      }
+      },
     })
   } catch (error) {
     console.error('Get messages error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching messages' 
+      message: 'Error fetching messages',
     })
   }
 }
@@ -252,9 +257,9 @@ const sendMessage = async (req, res) => {
     // Verify event belongs to organizer
     const event = await Event.findById(eventId)
     if (!event || event.organiser.toString() !== organizerId) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         success: false,
-        message: 'Access denied' 
+        message: 'Access denied',
       })
     }
 
@@ -278,13 +283,13 @@ const sendMessage = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      data: newMessage
+      data: newMessage,
     })
   } catch (error) {
     console.error('Send message error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error sending message' 
+      message: 'Error sending message',
     })
   }
 }
@@ -350,13 +355,13 @@ const getOrganizerEvents = async (req, res) => {
           total,
           pages: Math.ceil(total / parseInt(limit)),
         },
-      }
+      },
     })
   } catch (error) {
     console.error('Get organizer events error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error fetching events' 
+      message: 'Error fetching events',
     })
   }
 }
@@ -370,16 +375,16 @@ const updateEventStatus = async (req, res) => {
 
     const event = await Event.findById(eventId)
     if (!event) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Event not found' 
+        message: 'Event not found',
       })
     }
 
     if (event.organiser.toString() !== organizerId) {
-      return res.status(403).json({ 
+      return res.status(403).json({
         success: false,
-        message: 'Access denied' 
+        message: 'Access denied',
       })
     }
 
@@ -390,13 +395,133 @@ const updateEventStatus = async (req, res) => {
       success: true,
       data: {
         event,
-      }
+      },
     })
   } catch (error) {
     console.error('Update event status error:', error)
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
-      message: 'Error updating event status' 
+      message: 'Error updating event status',
+    })
+  }
+}
+
+// Get organizer conversations list (for inbox)
+const getOrganizerConversations = async (req, res) => {
+  try {
+    const organizerId = req.user.id
+    const { page = 1, limit = 20 } = req.query
+
+    // Get all conversations where organizer is participant
+    const conversations = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ senderId: organizerId }, { receiverId: organizerId }],
+        },
+      },
+      {
+        $group: {
+          _id: {
+            eventId: '$eventId',
+            userId: {
+              $cond: {
+                if: { $eq: ['$senderId', organizerId] },
+                then: '$receiverId',
+                else: '$senderId',
+              },
+            },
+          },
+          lastMessage: { $last: '$message' },
+          lastMessageTime: { $last: '$createdAt' },
+          userName: {
+            $last: {
+              $cond: {
+                if: { $eq: ['$senderId', organizerId] },
+                then: '$senderName',
+                else: { $literal: 'Attendee' },
+              },
+            },
+          },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$receiverId', organizerId] },
+                    { $ne: ['$status', 'seen'] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+      { $sort: { lastMessageTime: -1 } },
+      { $skip: (parseInt(page) - 1) * parseInt(limit) },
+      { $limit: parseInt(limit) },
+      {
+        $lookup: {
+          from: 'events',
+          localField: '_id.eventId',
+          foreignField: '_id',
+          as: 'event',
+        },
+      },
+      { $unwind: { path: '$event', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 0,
+          eventId: '$_id.eventId',
+          userId: '$_id.userId',
+          userName: 1,
+          eventTitle: '$event.title',
+          lastMessage: 1,
+          lastMessageTime: 1,
+          unreadCount: 1,
+        },
+      },
+    ])
+
+    const total = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ senderId: organizerId }, { receiverId: organizerId }],
+        },
+      },
+      {
+        $group: {
+          _id: {
+            eventId: '$eventId',
+            userId: {
+              $cond: {
+                if: { $eq: ['$senderId', organizerId] },
+                then: '$receiverId',
+                else: '$senderId',
+              },
+            },
+          },
+        },
+      },
+      { $count: 'total' },
+    ])
+
+    res.json({
+      success: true,
+      conversations,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total[0]?.total || 0,
+        pages: Math.ceil((total[0]?.total || 0) / parseInt(limit)),
+      },
+    })
+  } catch (error) {
+    console.error('Get conversations error:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching conversations',
     })
   }
 }
@@ -408,5 +533,6 @@ module.exports = {
   getEventMessages,
   sendMessage,
   getOrganizerEvents,
-  updateEventStatus
+  updateEventStatus,
+  getOrganizerConversations,
 }

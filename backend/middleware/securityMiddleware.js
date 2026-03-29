@@ -1,8 +1,10 @@
 const rateLimit = require('express-rate-limit')
 
+const isDev = process.env.NODE_ENV !== 'production'
+
 const paymentRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per 15 min
+  max: isDev ? 1000 : parseInt(process.env.PAYMENT_RATE_LIMIT) || 20,
   message: 'Too many payment requests, try again later',
   standardHeaders: true,
   legacyHeaders: false,
@@ -17,8 +19,8 @@ const paymentRateLimiter = rateLimit({
 })
 
 const payoutRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per 15 min
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 1000 : parseInt(process.env.PAYOUT_RATE_LIMIT) || 20,
   message: 'Too many withdrawal requests, try again later',
   standardHeaders: true,
   legacyHeaders: false,

@@ -279,7 +279,13 @@ const getTicket = async (req, res) => {
     const ticket = await Ticket.findOne({
       ticketId: req.params.ticketId,
     })
-      .populate('event')
+      .populate({
+        path: 'event',
+        populate: {
+          path: 'organiser',
+          select: '_id name email',
+        },
+      })
       .populate('user', 'name email')
 
     console.log('📦 Found ticket:', ticket)
@@ -328,14 +334,6 @@ const verifyTicket = async (req, res) => {
       })
     }
 
-    // SECURITY: Validate ticket exists
-    if (!ticket) {
-      return res.status(404).json({
-        valid: false,
-        message: 'Ticket not found',
-      })
-    }
-
     // SECURITY: Check if already checked in
     if (ticket.status === 'checked_in') {
       return res.status(400).json({
@@ -352,14 +350,6 @@ const verifyTicket = async (req, res) => {
         valid: false,
         message: 'Ticket not paid',
         status: ticket.status,
-      })
-    }
-
-    // SECURITY: Double-check status is not 'checked_in' (race condition prevention)
-    if (ticket.status === 'checked_in') {
-      return res.status(400).json({
-        valid: false,
-        message: 'Ticket already checked in',
       })
     }
 

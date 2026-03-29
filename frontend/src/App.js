@@ -18,13 +18,21 @@ import PaymentRequired from './pages/PaymentRequired'
 import OrganizerStart from './pages/OrganizerStart'
 import OrganizerDashboard from './pages/OrganizerDashboard'
 import OrganizerEvents from './pages/OrganizerEvents'
+
 import OrganizerCreateEvent from './pages/OrganizerCreateEvent'
 import OrganizerAnalytics from './pages/OrganizerAnalytics'
 import OrganizerPayouts from './pages/OrganizerPayouts'
 import OrganizerSettings from './pages/OrganizerSettings'
+import OrganizerInbox from './pages/OrganizerInbox'
 import OrganizerTickets from './pages/OrganizerTickets'
+import OrganizerChat from './pages/OrganizerChat'
+import ChatInbox from './pages/ChatInbox'
+import ChatBoxWrapper from './pages/ChatBoxWrapper'
 import EventDetails from './components/EventDetails'
+import EventChat from './pages/EventChat'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { SocketProvider } from './context/SocketContext'
+import { ChatProvider } from './context/chatContext'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isInitialized } = useAuth()
@@ -45,6 +53,7 @@ const ProtectedRoute = ({ children }) => {
 }
 
 function AppContent() {
+  console.log('📦 AppContent render')
   return (
     <Routes>
       {/* AUTH PAGES - NO NAVBAR */}
@@ -71,6 +80,7 @@ function AppContent() {
         <Route index element={<Home />} />
         <Route path="explore" element={<Explore />} />
         <Route path="event/:id" element={<EventDetails />} />
+
         <Route path="event/:id/checkout" element={<Checkout />} />
         <Route path="ticket/:ticketId" element={<Ticket />} />
 
@@ -170,6 +180,14 @@ function AppContent() {
           }
         />
         <Route
+          path="organiser/inbox"
+          element={
+            <ProtectedRoute>
+              <OrganizerInbox />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="organiser/event/:id/attendees"
           element={
             <ProtectedRoute>
@@ -186,10 +204,21 @@ function AppContent() {
           }
         />
 
+        <Route
+          path="chat"
+          element={
+            <ProtectedRoute>
+              <ChatInbox />
+            </ProtectedRoute>
+          }
+        >
+          <Route path=":eventId/:userId" element={<ChatBoxWrapper />} />
+        </Route>
+
         {/* REDIRECTS */}
         <Route
           path="organizer/*"
-          element={<Navigate to="organiser/start" replace />}
+          element={<Navigate to="/organiser/start" replace />}
         />
 
         <Route
@@ -208,7 +237,11 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <SocketProvider>
+        <ChatProvider>
+          <AppContent />
+        </ChatProvider>
+      </SocketProvider>
     </AuthProvider>
   )
 }

@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import EventCard from "./EventCard";
+import ChatBox from "./Chat/ChatBox";
 
 const API_URL = "http://localhost:5000/api";
 
@@ -403,6 +404,9 @@ function EventDetails() {
 
             </div>
 
+
+
+
             {/* ── RIGHT SIDEBAR ── */}
             <div className="ed-sidebar ed-fade-2">
               <div style={{
@@ -592,6 +596,7 @@ function EventDetails() {
               </div>
             </div>
           )}
+          
 
         </div>
       </div>

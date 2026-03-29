@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { useAuth } from "../context/AuthContext"
+import { useChatContext } from "../context/chatContext"
 
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -63,6 +64,27 @@ const STYLES = `
     flex-shrink: 0;
   }
 
+  .nb-chat-badge {
+    position: absolute;
+    top: -7px; right: -10px;
+    min-width: 18px; height: 18px;
+    background: #6366f1;
+    color: #fff;
+    font-size: 10px; font-weight: 800;
+    border-radius: 99px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 5px;
+    border: 2px solid rgba(8,12,20,.9);
+    animation: badge-pop .2s ease;
+    pointer-events: none;
+  }
+
+  @keyframes badge-pop {
+    0% { transform: scale(0.5); opacity: 0; }
+    70% { transform: scale(1.15); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
   @media (max-width: 768px) {
     .nb-links { display: none !important; }
     .nb-name { display: none !important; }
@@ -71,6 +93,7 @@ const STYLES = `
 
 function Navbar() {
   const { user, logout, isAuthenticated } = useAuth()
+  const { totalUnread } = useChatContext()
   const [showDropdown, setShowDropdown]   = useState(false)
   const dropdownRef = useRef(null)
   const location    = useLocation()
@@ -152,6 +175,29 @@ function Navbar() {
                 </Link>
                 <Link to="/tickets" className={`nb-link${isActive("/tickets") ? " active" : ""}`}>
                   My Tickets
+                </Link>
+
+                {/* ── CHAT LINK WITH BADGE ── */}
+                <Link
+                  to="/chat"
+                  className={`nb-link${isActive("/chat") ? " active" : ""}`}
+                  style={{ position: "relative" }}
+                >
+                  💬 Chat
+                  <AnimatePresence>
+                    {totalUnread > 0 && (
+                      <motion.span
+                        key="badge"
+                        className="nb-chat-badge"
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.5, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        {totalUnread > 99 ? "99+" : totalUnread}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                 </Link>
               </>
             )}

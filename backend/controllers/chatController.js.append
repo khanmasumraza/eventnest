@@ -1,0 +1,95 @@
+// Add this new function to controllers/chatController.js
+const getConversations = async (req, res) => {
+  try {
+    const userId = req.user._id
+
+    const conversations = await Message.aggregate([
+      {
+        $match: {
+          $or: [
+            { senderId: userId },
+            { receiverId: userId }
+          ]
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      },
+      {
+        $group: {
+          _id: {
+            eventId: "$eventId",
+            userId: {
+              $cond: [
+                { $eq: ["$senderId", userId] },
+                "$receiverId",
+                "$senderId"
+              ]
+            }
+          },
+          lastMessage: { $first: "$message" },
+          createdAt: { $first: "$createdAt" }
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id.userId",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+      {
+        $unwind: {
+          path: "$user",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $lookup: {
+          from: "events",
+          localField: "_id.eventId",
+          foreignField: "_id",
+          as: "event"
+        }
+      },
+      {
+        $unwind: {
+          path: "$event",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $sort: { "createdAt": -1 }
+      },
+      {
+        $project: {
+          eventId: "$_id.eventId",
+          userId: "$_id.userId",
+          userName: "$user.name",
+          eventTitle: "$event.title",
+          lastMessage: 1,
+          time: {
+            $dateToString: {
+              format: "%b %d, %H:%M",
+              date: "$createdAt"
+            }
+          }
+        }
+      }
+    ])
+
+    res.json({ success: true, conversations })
+
+  } catch (err) {
+    console.error("Conversations error:", err)
+    res.status(500).json({ success: false, error: err.message })
+  }
+}
+
+module.exports = { 
+  getChatMessages, 
+  sendChatMessage, 
+  getConversations 
+}
+

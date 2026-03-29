@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useNavigate } from "react-router-dom"
 import api from "../utils/api"
   import html2canvas from 'html2canvas'
 
@@ -144,6 +144,7 @@ const getAccentColor = (title = "") => {
 
 function Ticket() {
   const { ticketId }            = useParams()
+  const navigate = useNavigate();
   const [ticket, setTicket]     = useState(null)
   const [event, setEvent]       = useState(null)
   const [loading, setLoading]   = useState(true)
@@ -269,6 +270,53 @@ function Ticket() {
     // Desktop — open WhatsApp Web directly
     const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`
     window.open(waUrl, "_blank")
+  }
+
+  const handleChatNavigation = async () => {
+    const eventId =
+      typeof ticket?.event === "object"
+        ? ticket?.event?._id
+        : ticket?.event
+
+    const organizerId =
+      event?.organiser?._id?.toString() || (typeof event?.organiser === 'string' ? event?.organiser : null) ||
+      event?.organizer?._id?.toString() || (typeof event?.organizer === 'string' ? event?.organizer : null) ||
+      ticket?.event?.organiser?._id?.toString() || (typeof ticket?.event?.organiser === 'string' ? ticket?.event?.organiser : null) ||
+      ticket?.event?.organizer?._id?.toString() || (typeof ticket?.event?.organizer === 'string' ? ticket?.event?.organizer : null) ||
+      ticket?.organiser?._id?.toString() || ticket?.organiser ||
+      ticket?.organizer?._id?.toString() || ticket?.organizer
+
+    console.log("CHAT NAV:", { eventId, organizerId })
+
+    const isValid = (id) => /^[0-9a-fA-F]{24}$/.test(id)
+
+    if (!isValid(eventId) || !isValid(organizerId)) {
+      console.error("Invalid navigation IDs", { eventId, organizerId })
+      alert("Chat not available yet")
+      return
+    }
+
+    try {
+      const token = localStorage.getItem("token")
+      const res = await fetch("http://localhost:5000/api/chat/conversations", {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (data.success && data.conversations?.length > 0) {
+        const existing = data.conversations.find(
+          (c) => c.userId?.toString() === organizerId?.toString()
+        )
+        if (existing?.eventId) {
+          console.log("♻️ Reusing existing chat:", existing.eventId)
+          navigate(`/chat/${existing.eventId}/${organizerId}`)
+          return
+        }
+      }
+    } catch (err) {
+      console.error("Chat check failed:", err)
+    }
+
+    navigate(`/chat/${eventId}/${organizerId}`)
   }
 
   /* ── LOADING ── */
@@ -632,6 +680,40 @@ function Ticket() {
               🔗 {shareLabel}
             </button>
           </div>
+
+          {/* Chat button */}
+          <button
+            onClick={handleChatNavigation}            
+            className="tk-btn"
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              background: "#0f1623",
+              border: "1px solid rgba(255,255,255,.07)",
+              borderRadius: 12,
+              color: "#a5b4fc",
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              transition: "all .15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = "#6366f1"
+              e.target.style.borderColor = "#6366f1"
+              e.target.style.color = "#fff"
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = "#0f1623"
+              e.target.style.borderColor = "rgba(255,255,255,.07)"
+              e.target.style.color = "#a5b4fc"
+            }}
+          >
+            💬 Chat with Organizer
+          </button>
 
           {/* Dashboard */}
 
