@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import EventCard from "./EventCard";
-import ChatBox from "./Chat/ChatBox";
 
-const API_URL = "http://localhost:5000/api";
+
 
 const STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
@@ -105,7 +104,7 @@ function EventDetails() {
       return;
     }
     try {
-      const eventRes  = await axios.get(`${API_URL}/events/${id}`);
+  const eventRes  = await api.get(`/events/${id}`);
       const eventData = eventRes.data?.event || eventRes.data;
       setEvent(eventData);
 
@@ -116,10 +115,7 @@ function EventDetails() {
 
       if (user) {
         try {
-          const statusRes = await axios.get(
-            `${API_URL}/registrations/${id}/registration-status`,
-            { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } }
-          );
+        const statusRes = await api.get(`/registrations/${id}/registration-status`);
           setRegistrationStatus({
             registered: statusRes.data?.registered || false,
             ticketId:   statusRes.data?.ticketId   || null,
@@ -127,7 +123,7 @@ function EventDetails() {
         } catch { console.log("Not registered yet"); }
       }
 
-      const allEvents   = await axios.get(`${API_URL}/events`);
+      const allEvents   = await api.get(`/events`);
       const eventsArray = Array.isArray(allEvents.data)
         ? allEvents.data
         : allEvents.data?.events || [];

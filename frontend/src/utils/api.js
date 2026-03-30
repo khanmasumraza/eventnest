@@ -1,7 +1,6 @@
-import axios from 'axios'
+import axiosInstance from './axios.js'
 
-const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+const api = axiosInstance.create({
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -53,9 +52,7 @@ export const refreshAuth = async () => {
 
     if (!token) return false
 
-    const res = await axios.get('http://localhost:5000/api/auth/profile', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const res = await api.get('/auth/profile')
 
     localStorage.setItem('user', JSON.stringify(res.data))
 
