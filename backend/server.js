@@ -29,9 +29,8 @@ const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = [
       'http://localhost:3000',
-      // Add production URL here when deploying:
-      // 'https://yourdomain.con'
-    ]
+      process.env.FRONTEND_URL,
+    ].filter(Boolean)
 
     // Allow requests with no origin (Postman, mobile apps, server-to-server)
     if (!origin) return callback(null, true)

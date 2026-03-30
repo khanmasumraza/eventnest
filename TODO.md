@@ -1,7 +1,13 @@
-# Google OAuth Optional Implementation
+# EventNest TODO
 
-- [x] Create TODO.md with steps
-- [x] Edit backend/config/passport.js - wrap GoogleStrategy in env var check
-- [ ] Test app startup without Google env vars (verify warning log, no crash)
-- [ ] Test app startup with Google env vars (verify normal operation)
-- [ ] Complete task
+## Critical Fixes
+
+### CORS Fix (Production)
+
+- [x] Update `backend/server.js` corsOptions.allowedOrigins to include `process.env.FRONTEND_URL`
+- [ ] Deploy to Railway
+- [ ] Test frontend API calls from Vercel
+
+## Previous Tasks
+
+[Previous content preserved]
