@@ -12,7 +12,7 @@ function OrganizerPayouts() {
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [withdrawLoading, setWithdrawLoading] = useState(false);
+
 
   useEffect(() => {
     if (!user) {
