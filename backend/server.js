@@ -29,16 +29,17 @@ const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true)
 
-    const allowedOrigins = [
-      'http://localhost:3000',
-      process.env.FRONTEND_URL,
-    ].filter(Boolean)
+    const frontendUrls = (process.env.FRONTEND_URL || '')
+      .split(',')
+      .map((url) => url.trim())
+      .filter(Boolean)
+    const allowedOrigins = ['http://localhost:3000', ...frontendUrls]
 
-    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true)
     }
 
-    console.error(`CORS blocked: ${origin}`)
+    console.error('CORS blocked:', origin)
     return callback(new Error('Not allowed by CORS'))
   },
   credentials: true,
@@ -59,14 +60,8 @@ app.use(
 )
 
 /* ================= CORS MIDDLEWARE ================= */
-// Apply CORS to ALL routes including OPTIONS preflight
-// Using a middleware function instead of app.options()
-// avoids path-to-regexp wildcard syntax issues entirely
 app.use(cors(corsOptions))
 
-// Explicitly handle preflight for all routes via middleware
-// This is equivalent to app.options('*') but works with ALL
-// versions of path-to-regexp including v8+
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') {
     res.sendStatus(204)
@@ -83,13 +78,11 @@ app.use(cookieParser())
 /* ================= REQUEST LOGGER ================= */
 app.use((req, res, next) => {
   req.requestId = uuidv4()
-  console.log(`\n🚀 [${req.requestId}] REQUEST`)
-  console.log(`METHOD: ${req.method}`)
-  console.log(`URL: ${req.originalUrl}`)
-  console.log(`ORIGIN: ${req.headers.origin || 'none'}`)
-  console.log(`IP: ${req.ip}`)
+  console.log('[REQUEST] ', req.method, req.originalUrl)
+  console.log('ORIGIN:', req.headers.origin || 'none')
+  console.log('IP:', req.ip)
   res.on('finish', () => {
-    console.log(`✅ [${req.requestId}] RESPONSE ${res.statusCode}`)
+    console.log('[RESPONSE] ', res.statusCode)
   })
   next()
 })
@@ -99,16 +92,12 @@ require('./config/passport')(passport)
 app.use(passport.initialize())
 console.log('Passport initialized')
 
-/* ================= SOCKET ================= */
-/* Socket.io handled by backend/socket/index.js */
-
 /* ================= STATIC ================= */
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 /* ================= SOCKET ================= */
-const socketHandlers = require('./socket')
+const socketHandlers = require('./socket/index')
 socketHandlers.initializeSocket(server)
-
 console.log('Socket handlers initialized')
 
 /* ================= ROUTES ================= */
@@ -120,6 +109,7 @@ const paymentSetupRoutes = require('./routes/paymentSetupRoutes')
 const organizerRoutes = require('./routes/organizerRoutes')
 const ticketRoutes = require('./routes/ticketRoutes')
 const chatRoutes = require('./routes/chatRoutes')
+const payoutRoutes = require('./routes/payoutRoutes')
 
 app.get('/', (req, res) => {
   res.send('Welcome to EventNest API')
@@ -129,7 +119,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/events', eventRoutes)
 app.use('/api/payments', paymentRoutes)
 app.use('/api/chat', chatRoutes)
-app.use('/api/payouts', require('./routes/payoutRoutes'))
+app.use('/api/payouts', payoutRoutes)
 app.use('/api/registrations', registrationRoutes)
 app.use('/api/organizer', organizerRoutes)
 app.use('/api/organizer/payment-setup', paymentSetupRoutes)
@@ -147,9 +137,9 @@ app.use((req, res) => {
 
 /* ================= ERROR HANDLER ================= */
 app.use((err, req, res, next) => {
-  console.error(`\n❌ GLOBAL ERROR [${req.requestId || 'unknown'}]:`, err)
+  console.error('GLOBAL ERROR:', err)
 
-  if (err.message?.includes('CORS policy')) {
+  if (err.message?.includes('CORS')) {
     return res.status(403).json({
       success: false,
       message: err.message,
@@ -168,7 +158,7 @@ mongoose
   .then(() => {
     console.log('MongoDB connected successfully')
     server.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`)
+      console.log('Server running on port', PORT)
     })
   })
   .catch((err) => {
@@ -178,7 +168,7 @@ mongoose
 
 /* ================= GRACEFUL SHUTDOWN ================= */
 process.on('SIGINT', async () => {
-  console.log('\nShutting down server gracefully...')
+  console.log('Shutting down server gracefully...')
   server.close(() => {
     console.log('HTTP server closed')
   })
