@@ -30,7 +30,7 @@ const corsOptions = {
     const allowedOrigins = [
       'http://localhost:3000',
       // Add production URL here when deploying:
-      // 'https://yourdomain.com'
+      // 'https://yourdomain.con'
     ]
 
     // Allow requests with no origin (Postman, mobile apps, server-to-server)
