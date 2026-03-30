@@ -30,11 +30,11 @@ const { user } = useAuth() || {};
 useEffect(() => {
 console.log("⚡ useEffect RUN");
 
-```
+
 return () => {
   console.log("🧹 useEffect CLEANUP");
 };
-```
+
 
 }, []);
 
