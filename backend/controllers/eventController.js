@@ -334,11 +334,9 @@ const getMyTicket = async (req, res) => {
 
 // Register for event (without payment - for free events)
 const registerForEvent = async (req, res) => {
-  console.log('🚀 REGISTER START')
-  console.log('👉 req.params:', req.params)
-  console.log('👉 req.user:', req.user)
-  console.log('🚀 REGISTER START')
-  console.log('👉 req.params.id:', req.params.id)
+  console.log('📥 BODY:', req.body)
+  console.log('👤 USER:', req.user)
+  console.log('🎯 EVENT ID:', req.params.id)
   try {
     console.log('🚀 REGISTER API HIT - START')
     console.log('👤 User ID:', req.user._id)
@@ -369,9 +367,10 @@ const registerForEvent = async (req, res) => {
       user: req.user._id,
     })
     if (existingRegistration) {
-      return res
-        .status(400)
-        .json({ message: 'Already registered for this event' })
+      return res.status(200).json({
+        success: true,
+        registration: existingRegistration,
+      })
     }
 
     // Check capacity
@@ -408,11 +407,11 @@ const registerForEvent = async (req, res) => {
       qrCode,
       status: 'paid',
       attendeeInfo: {
-        name: user.name,
-        email: user.email,
-        phone: user.phone || '',
-        college: user.college || '',
-        batch: user.batch || '',
+        name: user?.name || '',
+        email: user?.email || '',
+        phone: user?.phone || '',
+        college: user?.college || '',
+        batch: user?.batch || '',
       },
     })
     console.log('🧠 About to SAVE registration')
@@ -453,14 +452,13 @@ const registerForEvent = async (req, res) => {
       ticketId,
       registration: populatedRegistration,
     })
-  } catch (error) {
-    console.error('🔥 FINAL REGISTER ERROR:', error)
-    console.error('ERROR STACK:', error.stack)
-    console.error(error.message)
-    console.error(error.stack)
-    res
-      .status(500)
-      .json({ message: 'Error registering for event', error: error.message })
+  } catch (err) {
+    console.error('❌ REGISTER ERROR:', err.message)
+    console.error(err.stack)
+    return res.status(500).json({
+      message: 'Internal error',
+      error: err.message,
+    })
   }
 }
 

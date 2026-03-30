@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 
 import AuthLayout from './layouts/AuthLayout'
 import MainLayout from './layouts/MainLayout'
@@ -18,7 +18,6 @@ import PaymentRequired from './pages/PaymentRequired'
 import OrganizerStart from './pages/OrganizerStart'
 import OrganizerDashboard from './pages/OrganizerDashboard'
 import OrganizerEvents from './pages/OrganizerEvents'
-
 import OrganizerCreateEvent from './pages/OrganizerCreateEvent'
 import OrganizerAnalytics from './pages/OrganizerAnalytics'
 import OrganizerPayouts from './pages/OrganizerPayouts'
@@ -33,6 +32,20 @@ import EventChat from './pages/EventChat'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SocketProvider } from './context/SocketContext'
 import { ChatProvider } from './context/chatContext'
+
+// ─── Layouts ────────────────────────────────────────────────────────────────
+
+/**
+ * OrganizerLayout — zero navbar, zero footer.
+ * Full-screen dark workspace for all /organiser/* routes.
+ */
+const OrganizerLayout = () => (
+  <div style={{ minHeight: '100vh', background: '#080c14' }}>
+    <Outlet />
+  </div>
+)
+
+// ─── Guards ─────────────────────────────────────────────────────────────────
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isInitialized } = useAuth()
@@ -52,69 +65,42 @@ const ProtectedRoute = ({ children }) => {
   return children
 }
 
+// ─── App ────────────────────────────────────────────────────────────────────
+
 function AppContent() {
-  console.log('📦 AppContent render')
   return (
     <Routes>
-      {/* AUTH PAGES - NO NAVBAR */}
+
+      {/* ── AUTH — no navbar ───────────────────────────────────────────── */}
       <Route
         path="/login"
-        element={
-          <AuthLayout>
-            <Login />
-          </AuthLayout>
-        }
+        element={<AuthLayout><Login /></AuthLayout>}
       />
       <Route
         path="/payment-required"
-        element={
-          <AuthLayout>
-            <PaymentRequired />
-          </AuthLayout>
-        }
+        element={<AuthLayout><PaymentRequired /></AuthLayout>}
       />
       <Route path="/auth/success" element={<AuthSuccess />} />
 
-      {/* ALL OTHER PAGES - WITH NAVBAR */}
-      <Route element={<MainLayout />}>
-        <Route index element={<Home />} />
-        <Route path="explore" element={<Explore />} />
-        <Route path="event/:id" element={<EventDetails />} />
+      {/* ── ORGANISER — OrganizerLayout (NO global navbar) ─────────────── */}
+      <Route element={<OrganizerLayout />}>
 
-        <Route path="event/:id/checkout" element={<Checkout />} />
-        <Route path="ticket/:ticketId" element={<Ticket />} />
-
-        <Route
-          path="dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="tickets"
-          element={
-            <ProtectedRoute>
-              <Tickets />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="profile"
-          element={
-            <ProtectedRoute>
-              <Profile />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* ORGANIZER */}
+        {/* /organiser → redirect to dashboard (skip /start entirely) */}
         <Route
           path="organiser"
-          element={<Navigate to="/organiser/start" replace />}
+          element={<Navigate to="/organiser/dashboard" replace />}
         />
-        <Route path="organiser/start" element={<OrganizerStart />} />
+
+        {/* Keep /start for legacy links but redirect straight to dashboard */}
+        <Route
+          path="organiser/start"
+          element={
+            <ProtectedRoute>
+              <OrganizerStart />
+            </ProtectedRoute>
+          }
+        />
+
         <Route
           path="organiser/dashboard"
           element={
@@ -204,32 +190,47 @@ function AppContent() {
           }
         />
 
+        {/* Typo redirect: /organizer/* → /organiser/* */}
+        <Route
+          path="organizer/*"
+          element={<Navigate to="/organiser/dashboard" replace />}
+        />
+      </Route>
+
+      {/* ── MAIN — with global navbar ───────────────────────────────────── */}
+      <Route element={<MainLayout />}>
+        <Route index element={<Home />} />
+        <Route path="explore" element={<Explore />} />
+        <Route path="event/:id" element={<EventDetails />} />
+        <Route path="event/:id/checkout" element={<Checkout />} />
+        <Route path="ticket/:ticketId" element={<Ticket />} />
+
+        <Route
+          path="dashboard"
+          element={<ProtectedRoute><Dashboard /></ProtectedRoute>}
+        />
+        <Route
+          path="tickets"
+          element={<ProtectedRoute><Tickets /></ProtectedRoute>}
+        />
+        <Route
+          path="profile"
+          element={<ProtectedRoute><Profile /></ProtectedRoute>}
+        />
+
         <Route
           path="chat"
-          element={
-            <ProtectedRoute>
-              <ChatInbox />
-            </ProtectedRoute>
-          }
+          element={<ProtectedRoute><ChatInbox /></ProtectedRoute>}
         >
           <Route path=":eventId/:userId" element={<ChatBoxWrapper />} />
         </Route>
 
-        {/* REDIRECTS */}
-        <Route
-          path="organizer/*"
-          element={<Navigate to="/organiser/start" replace />}
-        />
-
         <Route
           path="admin"
-          element={
-            <ProtectedRoute>
-              <div>Admin Panel</div>
-            </ProtectedRoute>
-          }
+          element={<ProtectedRoute><div>Admin Panel</div></ProtectedRoute>}
         />
       </Route>
+
     </Routes>
   )
 }

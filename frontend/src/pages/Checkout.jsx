@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useParams, useNavigate, Link } from 'react-router-dom'
@@ -123,6 +123,10 @@ function Checkout() {
   const [processing, setProcessing] = useState(false)
   const [error, setError]           = useState('')
   const [step, setStep]             = useState(1)
+  const [btnLoading, setBtnLoading] = useState(false)
+
+  const hasCalledRef = useRef(false)
+  useEffect(() => { hasCalledRef.current = false }, [id])
 
   const [attendeeInfo, setAttendeeInfo] = useState({
     name:    user?.name    || '',
@@ -240,24 +244,50 @@ function Checkout() {
     document.body.appendChild(script)
   }, [])
 
-  const proceed = () => { if (validateDetails()) setStep(2) }
+const proceed = async () => {
+  if (hasCalledRef.current) return
+  if (!validateDetails()) return
 
-  const registerFree = async () => {
-    try {
-      setProcessing(true); setError('')
-      const token = localStorage.getItem('token')
-      const res = await axios.post(`${API_URL}/events/${id}/register`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (res.data && res.data.success) { setPaymentResult(res.data); setStep(3) }
-      else setError(res.data?.message || 'Registration failed')
-    } catch (err) {
-      console.error('Free registration error:', err)
-      setError(err.response?.data?.message || 'Error completing registration')
-    } finally {
-      setProcessing(false)
+  hasCalledRef.current = true
+
+  try {
+    if (isFree) {
+      await registerFree()
+    } else {
+      hasCalledRef.current = false
+      setStep(2)
     }
+  } catch (err) {
+    hasCalledRef.current = false
+    setProcessing(false)
   }
+}
+
+const registerFree = async () => {
+  try {
+    setProcessing(true)
+    setError('')
+    const token = localStorage.getItem('token')
+    const res = await axios.post(`${API_URL}/events/${id}/register`, { attendeeInfo }, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    if (res.data?.success) {
+      setPaymentResult(res.data)
+      setStep(3)
+    } else {
+      throw new Error('Registration failed')
+    }
+  } catch (err) {
+    console.error(err)
+    setError(err.response?.data?.message || 'Registration failed')
+    throw err
+  } finally {
+    setProcessing(false)
+  }
+}
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text)
@@ -486,7 +516,7 @@ function Checkout() {
 
                     <button
                       onClick={proceed}
-                      disabled={processing}
+                      disabled={processing || btnLoading}
                       className="ck-btn-primary"
                       style={{
                         marginTop: 24,
@@ -781,7 +811,7 @@ function Checkout() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: "#d1d5db" }}>Total</span>
                   <span className="ck-mono" style={{ fontSize: 22, fontWeight: 800, color: "#f0f4ff" }}>
-                    {isFree ? 'Free' : `₹${event.price}`}
+{isFree ? 'Free' : `₹${event.ticketPrice}`}
                   </span>
                 </div>
 

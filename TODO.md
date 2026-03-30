@@ -1,1 +1,7 @@
-# Chat Name Fix - ✅ COMPLETE\n\n## Implemented:\n✅ Step 1: Added `[activeUserName, setActiveUserName]` state\n✅ Step 2: Added direct API fetch useEffect (`/api/users/${userId}`) with reset + safe `data?.user?.name` check\n✅ Step 3: Replaced outlet `receiverName: activeUserName || null`\n\n**File**: `frontend/src/pages/ChatInbox.jsx` (minimal changes only)\n\n## Results:\n- ✅ Name shows **instantly** on chat open (no more \"User\")\n- ✅ Works on refresh (independent of sockets/conversations)\n- ✅ No stale names (resets `null` on userId change)\n- ✅ No backend changes needed (uses existing `/api/users/:id`)\n\n**Test it:**\n`bash\ncd frontend\nnpm start\n`\nNavigate to any chat → correct name appears immediately!
+# Google OAuth Optional Implementation
+
+- [x] Create TODO.md with steps
+- [x] Edit backend/config/passport.js - wrap GoogleStrategy in env var check
+- [ ] Test app startup without Google env vars (verify warning log, no crash)
+- [ ] Test app startup with Google env vars (verify normal operation)
+- [ ] Complete task

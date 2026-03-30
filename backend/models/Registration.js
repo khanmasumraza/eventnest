@@ -85,7 +85,7 @@ const registrationSchema = new mongoose.Schema(
 
     paymentStatus: {
       type: String,
-      enum: ['pending', 'verified', 'failed', 'refunded'],
+     enum: ['pending', 'verified', 'failed', 'refunded', 'free'],
       default: 'pending',
       index: true,
     },
@@ -135,7 +135,7 @@ const registrationSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['pending', 'paid', 'checked_in', 'cancelled'],
+     enum: ['pending', 'paid', 'confirmed', 'checked_in', 'cancelled'],
       default: 'pending',
       index: true,
     },
