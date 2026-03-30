@@ -41,7 +41,7 @@ return () => {
 useEffect(() => {
 console.log("⚡ Socket init", Date.now());
 
-```
+
 const token = localStorage.getItem("token");
 
 if (!token) {
@@ -87,7 +87,7 @@ setSocket(newSocket);
 return () => {
   console.log("🧹 Socket cleanup skipped (singleton)");
 };
-```
+
 
 }, [user?._id]);
 
