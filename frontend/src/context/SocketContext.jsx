@@ -22,12 +22,14 @@ export const SocketProvider = ({ children }) => {
   console.log("🧠 SocketProvider render");
 
   const [connected, setConnected] = useState(false);
+  const [socket, setSocket] = useState(null);
   const socketRef = useRef(null);
 
   const { user } = useAuth() || {};
 
   useEffect(() => {
     console.log("⚡ Socket init", Date.now());
+    console.log("SOCKET URL:", process.env.REACT_APP_API_URL);
 
     const token = localStorage.getItem("token");
 
@@ -46,7 +48,7 @@ export const SocketProvider = ({ children }) => {
 
     const newSocket = io(SOCKET_URL, {
       auth: { token },
-      transports: ["websocket"],
+     transports: ["websocket", "polling"],
       withCredentials: true,
     });
 
@@ -70,6 +72,7 @@ export const SocketProvider = ({ children }) => {
     });
 
     socketRef.current = newSocket;
+    setSocket(newSocket);
 
     return () => {
       console.log("🧹 Cleaning socket");
@@ -121,7 +124,7 @@ export const SocketProvider = ({ children }) => {
   return (
     <SocketContext.Provider
       value={{
-        socket: socketRef.current, // ✅ always latest
+        socket, // reactive socket state
         connected,
         joinChat,
         leaveRoom,

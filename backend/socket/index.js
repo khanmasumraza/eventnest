@@ -9,16 +9,20 @@ const onlineUsers = new Map()
 /* ============================================================ */
 /* INITIALIZE SOCKET */
 /* ============================================================ */
-
 const initializeSocket = (server) => {
+  const allowedOrigins = (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+
   io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || '*',
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     },
     maxHttpBufferSize: 1e6,
-  })
+  });
 
   /* ============================================================ */
   /* SOCKET AUTHENTICATION */

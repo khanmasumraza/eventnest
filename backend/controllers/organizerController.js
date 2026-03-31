@@ -1,3 +1,4 @@
+const mongoose = require('mongoose')
 const Event = require('../models/Event')
 const Ticket = require('../models/Registration')
 const Payment = require('../models/Payment')
@@ -9,30 +10,24 @@ const getDashboardStats = async (req, res) => {
   try {
     const organizerId = req.user.id
 
-    // Get all events by organizer
     const events = await Event.find({ organiser: organizerId })
     const eventIds = events.map((e) => e._id)
 
-    // Total events
     const totalEvents = events.length
 
-    // Published events
     const publishedEvents = events.filter(
       (e) => e.status === 'published',
     ).length
 
-    // Upcoming events
     const upcomingEvents = events.filter(
       (e) => e.status === 'published' && new Date(e.date) > new Date(),
     ).length
 
-    // Total tickets sold
     const ticketsSold = await Ticket.countDocuments({
       event: { $in: eventIds },
       status: { $in: ['paid', 'checked_in'] },
     })
 
-    // Total revenue
     const payments = await Payment.aggregate([
       {
         $match: {
@@ -49,13 +44,11 @@ const getDashboardStats = async (req, res) => {
     ])
     const revenue = payments[0]?.total || 0
 
-    // Pending payments
     const pendingPayments = await Payment.countDocuments({
       event: { $in: eventIds },
       status: 'pending',
     })
 
-    // Checked in count
     const checkedIn = await Ticket.countDocuments({
       event: { $in: eventIds },
       status: 'checked_in',
@@ -88,7 +81,6 @@ const createEvent = async (req, res) => {
     const organizerId = req.user.id
     const eventData = req.body
 
-    // Basic validation
     if (
       !eventData.title ||
       !eventData.description ||
@@ -101,11 +93,10 @@ const createEvent = async (req, res) => {
       })
     }
 
-    // Create event
     const newEvent = new Event({
       ...eventData,
       organiser: organizerId,
-      status: 'pending', // Organizer created → pending admin approval
+      status: 'pending',
     })
 
     await newEvent.save()
@@ -134,7 +125,6 @@ const getEventAttendees = async (req, res) => {
     const { page = 1, limit = 20, search = '' } = req.query
     const organizerId = req.user.id
 
-    // Verify event belongs to organizer
     const event = await Event.findById(eventId)
     if (!event) {
       return res.status(404).json({
@@ -150,17 +140,6 @@ const getEventAttendees = async (req, res) => {
       })
     }
 
-    // Build search query
-    const searchQuery = search
-      ? {
-          $or: [
-            { 'user.name': { $regex: search, $options: 'i' } },
-            { 'user.email': { $regex: search, $options: 'i' } },
-          ],
-        }
-      : {}
-
-    // Get attendees with pagination
     const attendees = await Ticket.find({ event: eventId })
       .populate('user', 'name email phone')
       .populate({
@@ -173,7 +152,6 @@ const getEventAttendees = async (req, res) => {
 
     const total = await Ticket.countDocuments({ event: eventId })
 
-    // Transform data
     const formattedAttendees = attendees.map((ticket) => ({
       ticketId: ticket.ticketId,
       name: ticket.user?.name || 'Unknown',
@@ -218,13 +196,13 @@ const getEventMessages = async (req, res) => {
     const { eventId } = req.params
     const { page = 1, limit = 50 } = req.query
 
-    const messages = await Message.find({ event: eventId })
+    const messages = await Message.find({ eventId: eventId })
       .populate('senderId', 'name profileImage')
       .sort({ createdAt: -1 })
       .skip((parseInt(page) - 1) * parseInt(limit))
       .limit(parseInt(limit))
 
-    const total = await Message.countDocuments({ event: eventId })
+    const total = await Message.countDocuments({ eventId: eventId })
 
     res.status(200).json({
       success: true,
@@ -247,14 +225,13 @@ const getEventMessages = async (req, res) => {
   }
 }
 
-// Send message (organizer can broadcast)
+// Send message (organizer broadcast)
 const sendMessage = async (req, res) => {
   try {
     const { eventId } = req.params
     const { message } = req.body
     const organizerId = req.user.id
 
-    // Verify event belongs to organizer
     const event = await Event.findById(eventId)
     if (!event || event.organiser.toString() !== organizerId) {
       return res.status(403).json({
@@ -264,7 +241,7 @@ const sendMessage = async (req, res) => {
     }
 
     const newMessage = new Message({
-      event: eventId,
+      eventId: eventId,
       senderId: organizerId,
       senderName: 'Organizer',
       message,
@@ -272,7 +249,6 @@ const sendMessage = async (req, res) => {
 
     await newMessage.save()
 
-    // Emit to event room
     const { emitToEvent } = require('../socket')
     emitToEvent(eventId, 'receiveMessage', {
       _id: newMessage._id,
@@ -313,7 +289,6 @@ const getOrganizerEvents = async (req, res) => {
 
     const total = await Event.countDocuments(query)
 
-    // Get ticket stats for each event
     const eventsWithStats = await Promise.all(
       events.map(async (event) => {
         const ticketsSold = await Ticket.countDocuments({
@@ -366,7 +341,7 @@ const getOrganizerEvents = async (req, res) => {
   }
 }
 
-// Update event status (publish/unpublish)
+// Update event status
 const updateEventStatus = async (req, res) => {
   try {
     const { eventId } = req.params
@@ -406,39 +381,48 @@ const updateEventStatus = async (req, res) => {
   }
 }
 
-// Get organizer conversations list (for inbox)
+// Get organizer conversations list (inbox)
 const getOrganizerConversations = async (req, res) => {
   try {
     const organizerId = req.user.id
     const { page = 1, limit = 20 } = req.query
 
-    // Get all conversations where organizer is participant
+    // ✅ Convert JWT string ID to ObjectId for aggregation comparisons
+    const orgObjectId = new mongoose.Types.ObjectId(organizerId)
+
     const conversations = await Message.aggregate([
+      // ✅ Fix 1: ObjectId comparison — string was silently matching nothing
       {
         $match: {
-          $or: [{ senderId: organizerId }, { receiverId: organizerId }],
+          $or: [{ senderId: orgObjectId }, { receiverId: orgObjectId }],
         },
       },
+      // ✅ Fix 2: sort BEFORE $group — so $first picks the newest message
+      {
+        $sort: { createdAt: -1 },
+      },
+      // ✅ Fix 3: $first (not $last) because docs are now sorted newest→oldest
       {
         $group: {
           _id: {
             eventId: '$eventId',
             userId: {
               $cond: {
-                if: { $eq: ['$senderId', organizerId] },
+                if: { $eq: ['$senderId', orgObjectId] },
                 then: '$receiverId',
                 else: '$senderId',
               },
             },
           },
-          lastMessage: { $last: '$message' },
-          lastMessageTime: { $last: '$createdAt' },
+          lastMessage: { $first: '$message' },
+          lastMessageTime: { $first: '$createdAt' },
+          // ✅ Fix 4: use receiverName/senderName from schema (not literal 'Attendee')
           userName: {
-            $last: {
+            $first: {
               $cond: {
-                if: { $eq: ['$senderId', organizerId] },
-                then: '$senderName',
-                else: { $literal: 'Attendee' },
+                if: { $eq: ['$senderId', orgObjectId] },
+                then: '$receiverName',
+                else: '$senderName',
               },
             },
           },
@@ -447,7 +431,7 @@ const getOrganizerConversations = async (req, res) => {
               $cond: [
                 {
                   $and: [
-                    { $eq: ['$receiverId', organizerId] },
+                    { $eq: ['$receiverId', orgObjectId] },
                     { $ne: ['$status', 'seen'] },
                   ],
                 },
@@ -458,6 +442,7 @@ const getOrganizerConversations = async (req, res) => {
           },
         },
       },
+      // This sort is correct — orders conversations by most recent
       { $sort: { lastMessageTime: -1 } },
       { $skip: (parseInt(page) - 1) * parseInt(limit) },
       { $limit: parseInt(limit) },
@@ -484,10 +469,11 @@ const getOrganizerConversations = async (req, res) => {
       },
     ])
 
+    // ✅ Same ObjectId fix for the count pipeline
     const total = await Message.aggregate([
       {
         $match: {
-          $or: [{ senderId: organizerId }, { receiverId: organizerId }],
+          $or: [{ senderId: orgObjectId }, { receiverId: orgObjectId }],
         },
       },
       {
@@ -496,7 +482,7 @@ const getOrganizerConversations = async (req, res) => {
             eventId: '$eventId',
             userId: {
               $cond: {
-                if: { $eq: ['$senderId', organizerId] },
+                if: { $eq: ['$senderId', orgObjectId] },
                 then: '$receiverId',
                 else: '$senderId',
               },
