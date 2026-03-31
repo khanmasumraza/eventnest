@@ -9,20 +9,16 @@ const onlineUsers = new Map()
 /* ============================================================ */
 /* INITIALIZE SOCKET */
 /* ============================================================ */
-const initializeSocket = (server) => {
-  const allowedOrigins = (process.env.FRONTEND_URL || '')
-    .split(',')
-    .map((url) => url.trim())
-    .filter(Boolean);
 
+const initializeSocket = (server) => {
   io = new Server(server, {
     cors: {
-      origin: allowedOrigins,
+      origin: process.env.FRONTEND_URL || '*',
       methods: ['GET', 'POST'],
       credentials: true,
     },
     maxHttpBufferSize: 1e6,
-  });
+  })
 
   /* ============================================================ */
   /* SOCKET AUTHENTICATION */
@@ -100,9 +96,7 @@ const initializeSocket = (server) => {
 
         if (!hasTicket && !isOrganizer) {
           socket.emit('joinError', 'Access denied - ticket required')
-          console.log(
-            `Socket ${socket.id} denied access to chat ${eventId}_${userId}`,
-          )
+          console.log(`Socket ${socket.id} denied access to chat ${eventId}_${userId}`)
           return
         }
 
@@ -115,14 +109,10 @@ const initializeSocket = (server) => {
         const mirrorRoomId = `${eventId}_${authUser.id}`
         if (mirrorRoomId !== roomId) {
           socket.join(mirrorRoomId)
-          console.log(
-            `Socket ${socket.id} also joined mirror room: ${mirrorRoomId}`,
-          )
+          console.log(`Socket ${socket.id} also joined mirror room: ${mirrorRoomId}`)
         }
 
-        console.log(
-          `Socket ${socket.id} (${authUser.id}) joined 1:1 room: ${roomId}`,
-        )
+        console.log(`Socket ${socket.id} (${authUser.id}) joined 1:1 room: ${roomId}`)
         socket.emit('joinedChat', { eventId, userId, roomId, success: true })
 
         // Tell the joining user whether their chat partner is currently online
@@ -164,38 +154,20 @@ const initializeSocket = (server) => {
 
     socket.on('sendMessage', async (data, callback) => {
       const sender = socket.user
-      const {
-        eventId,
-        receiverId,
-        message,
-        fileUrl,
-        fileName,
-        fileType,
-        type,
-      } = data || {}
+      const { eventId, receiverId, message, fileUrl, fileName, fileType, type } = data || {}
 
-      const hasText =
-        message && message.trim().length > 0 && message.length <= 1000
+      const hasText = message && message.trim().length > 0 && message.length <= 1000
       const hasFile = !!fileUrl
 
       const User = require('../models/User')
-      const receiverUser = await User.findById(receiverId)
-        .select('name email')
-        .lean()
-      const resolvedReceiverName =
-        receiverUser?.name || receiverUser?.email?.split('@')[0] || 'User'
+      const receiverUser = await User.findById(receiverId).select('name email').lean()
+      const resolvedReceiverName = receiverUser?.name || receiverUser?.email?.split('@')[0] || 'User'
 
-      const senderUser = await User.findById(sender.id)
-        .select('name email')
-        .lean()
-      const resolvedSenderName =
-        senderUser?.name || senderUser?.email?.split('@')[0] || 'User'
+      const senderUser = await User.findById(sender.id).select('name email').lean()
+      const resolvedSenderName = senderUser?.name || senderUser?.email?.split('@')[0] || 'User'
 
       if (!sender || !eventId || !receiverId || (!hasText && !hasFile)) {
-        socket.emit(
-          'messageError',
-          'Invalid data: eventId, receiverId, and message or fileUrl required',
-        )
+        socket.emit('messageError', 'Invalid data: eventId, receiverId, and message or fileUrl required')
         callback?.({ success: false, error: 'Invalid data' })
         return
       }
@@ -204,15 +176,8 @@ const initializeSocket = (server) => {
         const Registration = require('../models/Registration')
         const Event = require('../models/Event')
 
-        const hasTicket = await Registration.exists({
-          event: eventId,
-          user: sender.id,
-          status: 'paid',
-        })
-        const isOrganizer = await Event.exists({
-          _id: eventId,
-          organiser: sender.id,
-        })
+        const hasTicket = await Registration.exists({ event: eventId, user: sender.id, status: 'paid' })
+        const isOrganizer = await Event.exists({ _id: eventId, organiser: sender.id })
 
         if (!hasTicket && !isOrganizer) {
           socket.emit('messageError', 'Access denied')
@@ -234,11 +199,7 @@ const initializeSocket = (server) => {
         })
 
         // Immediate ACK
-        callback({
-          success: true,
-          messageId: newMessage._id,
-          message: newMessage,
-        })
+        callback({ success: true, messageId: newMessage._id, message: newMessage })
 
         // Mark as delivered
         const updatedMessage = await Message.findByIdAndUpdate(
@@ -274,9 +235,7 @@ const initializeSocket = (server) => {
           io.to(senderRoom).emit('newMessage', messageData)
         }
 
-        console.log(
-          `✅ Message ${newMessage._id} sent→delivered sender:${sender.id}→receiver:${receiverId}`,
-        )
+        console.log(`✅ Message ${newMessage._id} sent→delivered sender:${sender.id}→receiver:${receiverId}`)
       } catch (error) {
         console.error('Send 1:1 message error:', error)
         socket.emit('messageError', 'Failed to send message')
@@ -291,17 +250,13 @@ const initializeSocket = (server) => {
     socket.on('typing', ({ eventId, receiverId }) => {
       if (!eventId || !socket.user || !receiverId) return
       const receiverRoom = `${eventId}_${receiverId}`
-      socket
-        .to(receiverRoom)
-        .emit('typing', { senderId: socket.user.id, eventId })
+      socket.to(receiverRoom).emit('typing', { senderId: socket.user.id, eventId })
     })
 
     socket.on('stopTyping', ({ eventId, receiverId }) => {
       if (!eventId || !socket.user || !receiverId) return
       const receiverRoom = `${eventId}_${receiverId}`
-      socket
-        .to(receiverRoom)
-        .emit('stopTyping', { senderId: socket.user.id, eventId })
+      socket.to(receiverRoom).emit('stopTyping', { senderId: socket.user.id, eventId })
     })
 
     /* ---------------------------------------------------------- */
@@ -345,12 +300,6 @@ const initializeSocket = (server) => {
     /* ---------------------------------------------------------- */
 
     socket.on('markSeen', async ({ eventId, userId }) => {
-      console.log('🟡 markSeen TRIGGERED:', {
-        eventId,
-        userId,
-        socketUser: socket.user?.id,
-      })
-
       if (!eventId || !socket.user) return
 
       // ✅ FIX: The receiver is always the currently connected user (socket.user.id)
@@ -373,35 +322,19 @@ const initializeSocket = (server) => {
           },
         )
 
-        console.log('🟡 updateMany DONE')
-
         if (updatedMessages.modifiedCount > 0) {
-          console.log(
-            `✅ Bulk markSeen: ${updatedMessages.modifiedCount} messages seen by ${receiverId} in ${eventId}`,
-          )
+          console.log(`✅ Bulk markSeen: ${updatedMessages.modifiedCount} messages seen by ${receiverId} in ${eventId}`)
 
           // Fetch the messages we just marked seen so we know who to notify
-          // const recentUpdated = await Message.find({
-          //   eventId,
-          //   receiverId,
-          //   status: 'seen',
-          //   updatedAt: { $gte: new Date(Date.now() - 10 * 1000) }, // last 10 seconds
-          // })
-
           const recentUpdated = await Message.find({
             eventId,
             receiverId,
             status: 'seen',
+            updatedAt: { $gte: new Date(Date.now() - 10 * 1000) }, // last 10 seconds
           })
             .sort({ updatedAt: -1 })
             .limit(50)
             .lean()
-
-            .sort({ updatedAt: -1 })
-            .limit(50)
-            .lean()
-
-          console.log('🟡 messages fetched for emit:', recentUpdated.length)
 
           recentUpdated.forEach((msg) => {
             const messageData = {
@@ -414,15 +347,8 @@ const initializeSocket = (server) => {
             // ✅ FIX: emit to the SENDER's mirror room — eventId_senderId
             // The sender joined this room when they opened chat
             const senderRoom = `${eventId}_${msg.senderId}`
-            console.log(
-              '🔴 EMITTING messageUpdated TO:',
-              `${eventId}_${msg.senderId}`,
-              msg._id,
-            )
             io.to(senderRoom).emit('messageUpdated', messageData)
-            console.log(
-              `📤 messageUpdated → room: ${senderRoom} for msg: ${msg._id}`,
-            )
+            console.log(`📤 messageUpdated → room: ${senderRoom} for msg: ${msg._id}`)
           })
         }
       } catch (error) {
@@ -444,8 +370,7 @@ const initializeSocket = (server) => {
           eventId,
           senderId: null,
           senderName: 'EventNest',
-          message:
-            'You are registered for this event. You can now chat with the organizer.',
+          message: 'You are registered for this event. You can now chat with the organizer.',
         })
 
         const messageData = {

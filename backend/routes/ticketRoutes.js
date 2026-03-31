@@ -11,6 +11,12 @@ const {
 // Apply general rate limiter to all routes
 router.use(generalRateLimiter)
 
+// ✅ NEW — Get all tickets for organizer's events (must be BEFORE /:ticketId)
+router.get('/organizer/all', protect, isOrganizer, ticketController.getOrganizerAllTickets)
+
+// Get attendees for a specific event (organizer only)
+router.get('/event/:eventId', protect, isOrganizer, ticketController.getEventAttendees)
+
 // Create pending ticket
 router.post('/', protect, paymentRateLimiter, ticketController.createTicket)
 
@@ -33,13 +39,13 @@ router.post(
 // Get user's tickets
 router.get('/my-tickets', protect, ticketController.getMyTickets)
 
-// Get single ticket - requires authentication
-router.get('/:ticketId', protect, ticketController.getTicket)
-
-// Verify ticket QR code (organizer only)
+// Verify ticket QR code (organizer only) — must be BEFORE /:ticketId
 router.get('/verify/:ticketId', protect, ticketController.verifyTicket)
 
-// Payment routes (also available via paymentRoutes)
+// Get single ticket
+router.get('/:ticketId', protect, ticketController.getTicket)
+
+// Payment routes
 router.post(
   '/:ticketId/payment',
   protect,

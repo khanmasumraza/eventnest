@@ -67,7 +67,15 @@ router.put('/admin/events/:id/reject', protect, rejectEvent)
 /* EVENT CREATION */
 /* ---------------------------------------------------------- */
 
-router.post('/', protect, uploadQR.single('organizerQrImage'), createEvent)
+router.post(
+  '/',
+  protect,
+  uploadQR.fields([
+    { name: 'organizerQrImage', maxCount: 1 },
+    { name: 'coverImage', maxCount: 1 },
+  ]),
+  createEvent,
+)
 
 /* ---------------------------------------------------------- */
 /* CHECK-IN */

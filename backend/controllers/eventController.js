@@ -132,11 +132,15 @@ const createEvent = async (req, res) => {
       paymentInstructions:
         paymentInstructions ||
         'Complete the UPI payment using the organizer details and then submit your transaction ID.',
-      organizerQrImage: req.file
-        ? `/uploads/paymentQR/${req.file.filename}`
+      organizerQrImage: req.files?.organizerQrImage?.[0]
+        ? `/uploads/paymentQR/${req.files.organizerQrImage[0].filename}`
         : undefined,
-      imageUrl: imageUrl || bannerUrl,
-      bannerUrl: bannerUrl || imageUrl,
+      imageUrl: req.files?.coverImage?.[0]
+        ? `/uploads/paymentQR/${req.files.coverImage[0].filename}`
+        : imageUrl || bannerUrl,
+      bannerUrl: req.files?.coverImage?.[0]
+        ? `/uploads/paymentQR/${req.files.coverImage[0].filename}`
+        : bannerUrl || imageUrl,
       organiser: req.user._id,
       status: 'approved', // Auto-approve for now
       registered: 0,

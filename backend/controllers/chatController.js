@@ -36,7 +36,7 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  limits: { fileSize: 10 * 1024 * 1024 },
 }).single('file')
 
 // ✅ UPLOAD FILE
@@ -51,18 +51,16 @@ const uploadFile = (req, res) => {
       return res.status(400).json({ success: false, message: 'No file provided' })
     }
 
-    // For raw files (PDF, docs) — generate a proper download URL
     const isRaw = !req.file.mimetype.startsWith('image/') && !req.file.mimetype.startsWith('video/')
     let fileUrl = req.file.path
 
-    // For raw files — generate signed URL valid for 1 hour
     if (isRaw) {
       const publicId = req.file.filename || req.file.public_id
       fileUrl = cloudinary.url(publicId, {
         resource_type: 'raw',
         type: 'upload',
         sign_url: true,
-        expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7, // 7 days
+        expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
       })
     }
 
@@ -75,57 +73,57 @@ const uploadFile = (req, res) => {
   })
 }
 
-// ✅ GET MESSAGES — UNTOUCHED
+// ✅ GET MESSAGES — across ALL events between 2 users (no eventId filter)
 const getChatMessages = async (req, res) => {
   try {
-    const { eventId, userId } = req.params
+    const { userId } = req.params  // only userId now — no eventId in route
     const currentUserId = req.user._id
 
-    if (
-      !mongoose.Types.ObjectId.isValid(eventId) ||
-      !mongoose.Types.ObjectId.isValid(userId)
-    ) {
-      return res.status(400).json({ success: false, message: 'Invalid IDs' })
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid userId' })
     }
 
-    const match = {
-      eventId: new mongoose.Types.ObjectId(eventId),
-      $or: [
-        {
-          senderId: currentUserId,
-          receiverId: new mongoose.Types.ObjectId(userId),
-        },
-        {
-          senderId: new mongoose.Types.ObjectId(userId),
-          receiverId: currentUserId,
-        },
-      ],
-    }
-
-    const hasTicket = await Registration.exists({
-      event: eventId,
+    // Verify current user has at least one common event with the other user
+    // (either as ticket holder or organizer) — security check
+    const myRegistrations = await Registration.find({
       user: currentUserId,
       status: 'paid',
-    })
+    }).distinct('event')
 
-    const isOrganizer = await Event.exists({
-      _id: eventId,
+    const myOrganizedEvents = await Event.find({
       organiser: currentUserId,
-    })
+    }).distinct('_id')
 
-    if (!hasTicket && !isOrganizer) {
-      return res.status(403).json({ success: false, message: 'Access denied' })
+    const myEventIds = [...myRegistrations, ...myOrganizedEvents].map(String)
+
+    const theirRegistrations = await Registration.find({
+      user: userId,
+      status: 'paid',
+    }).distinct('event')
+
+    const theirOrganizedEvents = await Event.find({
+      organiser: userId,
+    }).distinct('_id')
+
+    const theirEventIds = [...theirRegistrations, ...theirOrganizedEvents].map(String)
+
+    const commonEventIds = myEventIds.filter((id) => theirEventIds.includes(id))
+
+    if (commonEventIds.length === 0) {
+      return res.status(403).json({ success: false, message: 'Access denied — no common events' })
     }
 
-    const messages = await Message.find(match)
-      .populate('senderId', 'name email')
+    // Fetch ALL messages between the two users across all events
+    const messages = await Message.find({
+      $or: [
+        { senderId: currentUserId, receiverId: new mongoose.Types.ObjectId(userId) },
+        { senderId: new mongoose.Types.ObjectId(userId), receiverId: currentUserId },
+      ],
+    })
       .sort({ createdAt: 1 })
       .lean()
 
-    res.json({
-      success: true,
-      messages,
-    })
+    res.json({ success: true, messages })
   } catch (error) {
     console.error('🔥 CHAT ERROR:', error)
     res.status(500).json({ success: false, message: 'Server error' })
@@ -140,9 +138,7 @@ const sendChatMessage = async (req, res) => {
     const senderId = req.user._id
 
     if (!message?.trim()) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Message required' })
+      return res.status(400).json({ success: false, message: 'Message required' })
     }
 
     const newMessage = await Message.create({
@@ -162,7 +158,8 @@ const sendChatMessage = async (req, res) => {
   }
 }
 
-// ✅ CONVERSATIONS — UNTOUCHED
+// ✅ CONVERSATIONS — grouped by userId only (not eventId+userId)
+// Same user across multiple events = one conversation entry
 const getConversations = async (req, res) => {
   try {
     const myId = new mongoose.Types.ObjectId(req.user.id)
@@ -176,12 +173,15 @@ const getConversations = async (req, res) => {
       { $sort: { createdAt: -1 } },
       {
         $group: {
+          // ✅ Group by OTHER userId only — not eventId
+          // This merges all cross-event messages into one conversation
           _id: {
-            eventId: '$eventId',
             userId: {
               $cond: [{ $eq: ['$senderId', myId] }, '$receiverId', '$senderId'],
             },
           },
+          // Keep the most recent eventId for socket room joining
+          eventId: { $first: '$eventId' },
           lastMessage: { $first: '$message' },
           fileName: { $first: '$fileName' },
           updatedAt: { $first: '$createdAt' },
@@ -191,24 +191,14 @@ const getConversations = async (req, res) => {
                 { $eq: ['$senderId', myId] },
                 {
                   $cond: [
-                    {
-                      $and: [
-                        { $ne: ['$receiverName', null] },
-                        { $ne: ['$receiverName', 'User'] },
-                      ],
-                    },
+                    { $and: [{ $ne: ['$receiverName', null] }, { $ne: ['$receiverName', 'User'] }] },
                     '$receiverName',
                     '$senderName',
                   ],
                 },
                 {
                   $cond: [
-                    {
-                      $and: [
-                        { $ne: ['$senderName', null] },
-                        { $ne: ['$senderName', 'User'] },
-                      ],
-                    },
+                    { $and: [{ $ne: ['$senderName', null] }, { $ne: ['$senderName', 'User'] }] },
                     '$senderName',
                     '$receiverName',
                   ],
@@ -221,8 +211,9 @@ const getConversations = async (req, res) => {
       {
         $project: {
           _id: 0,
-          eventId: '$_id.eventId',
+          // ✅ No eventId in the key — userId is the only identifier
           userId: '$_id.userId',
+          eventId: 1,  // kept for socket room — backend only
           userName: 1,
           lastMessage: {
             $cond: [
@@ -240,13 +231,8 @@ const getConversations = async (req, res) => {
     const fixedConversations = await Promise.all(
       conversations.map(async (conv) => {
         if (!conv.userName || conv.userName === 'User') {
-          const user = await User.findById(conv.userId)
-            .select('name email')
-            .lean()
-
-          const resolvedName =
-            user?.name || user?.email?.split('@')[0] || 'User'
-
+          const user = await User.findById(conv.userId).select('name email').lean()
+          const resolvedName = user?.name || user?.email?.split('@')[0] || 'User'
           return { ...conv, userName: resolvedName }
         }
         return conv

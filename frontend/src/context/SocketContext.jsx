@@ -10,6 +10,7 @@ import { useAuth } from "./AuthContext";
 
 const SocketContext = createContext();
 
+// 🔹 Hook
 export const useSocket = () => {
   const context = useContext(SocketContext);
   if (!context) {
@@ -18,18 +19,18 @@ export const useSocket = () => {
   return context;
 };
 
+// 🔹 Provider
 export const SocketProvider = ({ children }) => {
   console.log("🧠 SocketProvider render");
 
-  const [connected, setConnected] = useState(false);
   const [socket, setSocket] = useState(null);
-  const socketRef = useRef(null);
+  const [connected, setConnected] = useState(false);
 
+  const socketRef = useRef(null);
   const { user } = useAuth() || {};
 
   useEffect(() => {
     console.log("⚡ Socket init", Date.now());
-    console.log("SOCKET URL:", process.env.REACT_APP_API_URL);
 
     const token = localStorage.getItem("token");
 
@@ -38,25 +39,31 @@ export const SocketProvider = ({ children }) => {
       return;
     }
 
-    // ✅ Prevent duplicate socket
+    // 🔹 prevent duplicate connection
     if (socketRef.current) {
       console.log("🔄 Using existing socket");
       return;
     }
 
-    const SOCKET_URL = process.env.REACT_APP_API_URL;
+    // 🔥 FINAL SOCKET URL LOGIC (LOCAL + PROD SAFE)
+    const SOCKET_URL =
+      process.env.REACT_APP_SOCKET_URL ||
+      (process.env.REACT_APP_API_URL
+        ? process.env.REACT_APP_API_URL.replace("/api", "")
+        : "http://localhost:5000");
+
+    console.log("🌐 SOCKET URL:", SOCKET_URL);
 
     const newSocket = io(SOCKET_URL, {
       auth: { token },
-     transports: ["websocket", "polling"],
+      transports: ["websocket", "polling"],
       withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
     });
 
-    // ✅ Prevent duplicate listeners
-    newSocket.off("connect");
-    newSocket.off("disconnect");
-    newSocket.off("connect_error");
-
+    // 🔹 EVENTS
     newSocket.on("connect", () => {
       console.log("✅ Connected:", newSocket.id);
       setConnected(true);
@@ -71,9 +78,11 @@ export const SocketProvider = ({ children }) => {
       console.error("🚨 Socket error:", err.message);
     });
 
+    // 🔹 store socket
     socketRef.current = newSocket;
     setSocket(newSocket);
 
+    // 🔹 cleanup
     return () => {
       console.log("🧹 Cleaning socket");
 
@@ -82,9 +91,10 @@ export const SocketProvider = ({ children }) => {
         socketRef.current = null;
       }
     };
-  }, []); // ✅ run only once
+  }, []);
 
-  // ✅ METHODS (unchanged logic)
+  // 🔹 METHODS
+
   const joinChat = ({ eventId, userId }) => {
     if (socketRef.current?.connected) {
       socketRef.current.emit("joinChat", { eventId, userId });
@@ -109,6 +119,7 @@ export const SocketProvider = ({ children }) => {
       return true;
     }
 
+    console.warn("⚠️ Socket not connected");
     callback?.({ success: false });
     return false;
   };
@@ -124,7 +135,7 @@ export const SocketProvider = ({ children }) => {
   return (
     <SocketContext.Provider
       value={{
-        socket, // reactive socket state
+        socket,
         connected,
         joinChat,
         leaveRoom,

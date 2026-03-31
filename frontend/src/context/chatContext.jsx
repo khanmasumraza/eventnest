@@ -5,13 +5,12 @@ import { useAuth } from "./AuthContext"
 const ChatContext = createContext(null)
 
 export const ChatProvider = ({ children }) => {
-  // { "eventId-userId": count }
+  // ✅ key is now just userId (not eventId-userId)
   const [unreadMap, setUnreadMap] = useState({})
   const { socket } = useSocket()
   const { user } = useAuth()
 
-  // ✅ GLOBAL socket listener — works on ANY page, not just /chat
-  // Navbar badge will increment even when user is on Explore/Dashboard/etc.
+  // ✅ GLOBAL socket listener — works on ANY page
   useEffect(() => {
     if (!socket || !user?._id) return
 
@@ -20,21 +19,19 @@ export const ChatProvider = ({ children }) => {
     const handleNewMessage = (msg) => {
       const sId = msg.senderId?.toString()
       const rId = msg.receiverId?.toString()
-      const mEventId = msg.eventId?.toString()
 
-      // Only count messages received by me, not sent by me
+      // Only count messages received by me
       if (rId !== myId) return
-      if (!mEventId || !sId) return
+      if (!sId) return
 
       const otherUserId = sId
 
-      // Don't increment if this exact chat is currently open
+      // Don't increment if this chat is currently open
       const currentPath = window.location.pathname
-      const isActiveChatOpen = currentPath === `/chat/${mEventId}/${otherUserId}`
+      const isActiveChatOpen = currentPath === `/chat/${otherUserId}`
 
       if (!isActiveChatOpen) {
-        const key = `${mEventId}-${otherUserId}`
-        setUnreadMap((prev) => ({ ...prev, [key]: (prev[key] || 0) + 1 }))
+        setUnreadMap((prev) => ({ ...prev, [otherUserId]: (prev[otherUserId] || 0) + 1 }))
       }
     }
 
@@ -42,23 +39,21 @@ export const ChatProvider = ({ children }) => {
     return () => socket.off("newMessage", handleNewMessage)
   }, [socket, user])
 
-  // Called when user opens a conversation
-  const clearUnread = useCallback((eventId, userId) => {
-    const key = `${eventId}-${userId}`
+  // ✅ clearUnread — just userId
+  const clearUnread = useCallback((userId) => {
     setUnreadMap((prev) => {
-      if (!prev[key]) return prev
+      if (!prev[userId]) return prev
       const next = { ...prev }
-      delete next[key]
+      delete next[userId]
       return next
     })
   }, [])
 
-  // Kept for backward compat — ChatInbox still calls this but global handler is source of truth now
-  const incrementUnread = useCallback((eventId, userId) => {
-    // no-op — global socket handler above manages incrementing
+  // Kept for backward compat
+  const incrementUnread = useCallback((userId) => {
+    // no-op — global handler manages this
   }, [])
 
-  // Total unread across all conversations — for navbar badge
   const totalUnread = Object.values(unreadMap).reduce((sum, n) => sum + n, 0)
 
   return (

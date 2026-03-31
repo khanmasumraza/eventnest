@@ -12,19 +12,16 @@ const categoryIcons = {
 }
 
 const S = {
-  // Stat card
   statCard: {
     background: '#0d1220', border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: '16px', padding: '20px 22px', display: 'flex',
-    flexDirection: 'column', gap: '10px', flex: '1 1 140px', minWidth: '0',
+    borderRadius: '14px', padding: '18px 20px', display: 'flex',
+    flexDirection: 'column', gap: '8px', minWidth: '0',
   },
   statLabel: { color: '#6b7280', fontSize: '12px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' },
   statValue: { color: '#e5e7eb', fontSize: '26px', fontWeight: 700, lineHeight: 1 },
   statTrend: { color: '#34d399', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' },
-  // Section card
   card: { background: '#0d1220', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '22px' },
   cardTitle: { color: '#e5e7eb', fontSize: '16px', fontWeight: 600, marginBottom: '16px' },
-  // Button
   btnPrimary: {
     display: 'inline-flex', alignItems: 'center', gap: '6px',
     padding: '9px 18px', background: '#6366f1', color: 'white',
@@ -40,35 +37,47 @@ const S = {
   },
 }
 
+// ✅ Moved outside component — pure utility, no hooks needed
+function getTimeAgo(dateStr) {
+  if (!dateStr) return ''
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+  if (mins < 60) return `${mins} min ago`
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`
+  return `${days} day${days > 1 ? 's' : ''} ago`
+}
+
 function OrganizerDashboard() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [events, setEvents] = useState([])
+  const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
   const [timeFilter, setTimeFilter] = useState('30')
-  const [activities, setActivities] = useState([])
-  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     if (!user) { navigate('/login'); return }
     if (user.role !== 'organizer') { navigate('/dashboard'); return }
     fetchOrganizerData()
-  }, [user, timeFilter])
+  }, [user])
 
   const fetchOrganizerData = async () => {
     try {
-      const eventsRes = await api.get('/organizer/events')
+      const eventsRes = await api.get('/events/my-events')
       const rawData = eventsRes.data?.events || eventsRes.data
       const organizerEvents = Array.isArray(rawData) ? rawData : []
       setEvents(organizerEvents)
-      setActivities([
-        { id: 1, type: 'purchase', text: 'New ticket purchased for Tech Bootcamp', time: '2 hours ago' },
-        { id: 2, type: 'register', text: 'New attendee registered for Workshop', time: '5 hours ago' },
-        { id: 3, type: 'reminder', text: 'Reminder email sent to attendees', time: '1 day ago' },
-        { id: 4, type: 'purchase', text: 'New ticket purchased for Meetup', time: '2 days ago' },
-      ])
+
+      try {
+        const ticketsRes = await api.get('/tickets/organizer/all')
+        setTickets(ticketsRes.data?.tickets || ticketsRes.data || [])
+      } catch {
+        setTickets([])
+      }
     } catch (error) {
-      console.error('❌ Organizer data error:', error.response?.data || error.message)
+      console.error('❌ Dashboard data error:', error.response?.data || error.message)
     } finally {
       setLoading(false)
     }
@@ -82,27 +91,85 @@ function OrganizerDashboard() {
   }), [events])
 
   const nextEvent = useMemo(() => {
-    return events.filter(e => new Date(e.date) >= new Date())
+    return events
+      .filter(e => new Date(e.date) >= new Date())
       .sort((a, b) => new Date(a.date) - new Date(b.date))[0] || null
   }, [events])
 
   const chartData = useMemo(() => {
     const days = parseInt(timeFilter)
     const now = new Date()
-    return Array.from({ length: days }, (_, i) => {
-      const date = new Date(now)
-      date.setDate(date.getDate() - (days - 1 - i))
-      const mockSales = Math.floor(Math.random() * 20) + (events.length > 0 ? 5 : 0)
-      return { date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), tickets: mockSales }
+    const buckets = {}
+
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now)
+      d.setDate(d.getDate() - i)
+      const key = d.toISOString().split('T')[0]
+      buckets[key] = { tickets: 0, date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
+    }
+
+    tickets.forEach(ticket => {
+      if (!ticket.createdAt) return
+      const key = new Date(ticket.createdAt).toISOString().split('T')[0]
+      if (buckets[key]) buckets[key].tickets += 1
     })
-  }, [timeFilter, events])
+
+    return Object.values(buckets)
+  }, [timeFilter, tickets])
+
+  // ✅ getTimeAgo is now defined above, so this useMemo works fine
+  const activities = useMemo(() => {
+    if (tickets.length === 0 && events.length === 0) return []
+
+    const items = []
+
+    const recentTickets = [...tickets]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 3)
+
+    recentTickets.forEach(ticket => {
+      const eventTitle = ticket.event?.title || 'an event'
+      const userName = ticket.user?.name || 'Someone'
+      const timeAgo = getTimeAgo(ticket.createdAt)
+      items.push({
+        id: ticket._id,
+        type: 'purchase',
+        text: `${userName} purchased a ticket for ${eventTitle}`,
+        time: timeAgo,
+        _rawTime: ticket.createdAt,
+      })
+    })
+
+    const recentEvents = [...events]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 2)
+
+    recentEvents.forEach(event => {
+      items.push({
+        id: event._id,
+        type: 'register',
+        text: `Event "${event.title}" created`,
+        time: getTimeAgo(event.createdAt),
+        _rawTime: event.createdAt,
+      })
+    })
+
+    return items
+      .sort((a, b) => new Date(b._rawTime) - new Date(a._rawTime))
+      .slice(0, 5)
+  }, [tickets, events])
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(amount)
 
   const maxTickets = Math.max(...chartData.map(d => d.tickets), 1)
-
   const activityDot = { purchase: '#34d399', register: '#6366f1', reminder: '#f59e0b' }
+
+  const thisWeekTickets = useMemo(() => {
+    const weekAgo = new Date()
+    weekAgo.setDate(weekAgo.getDate() - 7)
+    return tickets.filter(t => t.createdAt && new Date(t.createdAt) >= weekAgo).length
+  }, [tickets])
 
   if (loading) {
     return (
@@ -121,35 +188,24 @@ function OrganizerDashboard() {
 
   return (
     <OrganizerLayout>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-
-        {/* ── Header ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <h1 style={{ color: '#e5e7eb', fontSize: '24px', fontWeight: 700, margin: 0 }}>
-              Welcome back{user?.name ? `, ${user.name.split(' ')[0]}` : ''} 👋
-            </h1>
-            <p style={{ color: '#6b7280', fontSize: '14px', margin: '4px 0 0' }}>
-              Here's how your events are performing
-            </p>
-          </div>
-          <Link to="/organiser/create" style={S.btnPrimary}>
-            <span style={{ fontSize: '16px', lineHeight: 1 }}>+</span> Create event
-          </Link>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
 
         {/* ── Stats row ── */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }} className="stats-grid">
           {[
             { label: 'Total events', value: stats.totalEvents, trend: null, icon: '📅' },
-            { label: 'Tickets sold', value: stats.ticketsSold, trend: '+12 this week', icon: '🎫' },
+            {
+              label: 'Tickets sold', value: stats.ticketsSold,
+              trend: thisWeekTickets > 0 ? `+${thisWeekTickets} this week` : null,
+              icon: '🎫'
+            },
             { label: 'Revenue', value: formatCurrency(stats.revenue), trend: null, icon: '💰' },
             { label: 'Upcoming', value: stats.upcomingEvents, trend: null, icon: '🔥' },
           ].map((s, i) => (
             <div key={i} style={S.statCard}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={S.statLabel}>{s.label}</span>
-                <span style={{ fontSize: '20px' }}>{s.icon}</span>
+                <span style={{ fontSize: '18px', opacity: 0.7 }}>{s.icon}</span>
               </div>
               <div style={S.statValue}>{s.value}</div>
               {s.trend && <div style={S.statTrend}><span>↑</span>{s.trend}</div>}
@@ -177,27 +233,49 @@ function OrganizerDashboard() {
               ))}
             </div>
           </div>
-          {/* Bar chart */}
+
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: '120px' }}>
-            {chartData.map((d, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                <div style={{
-                  width: '100%', borderRadius: '4px 4px 0 0',
-                  background: i === chartData.length - 1 ? '#6366f1' : 'rgba(99,102,241,0.25)',
-                  height: `${Math.max((d.tickets / maxTickets) * 100, 4)}%`,
-                  transition: 'height 0.3s',
-                }} />
-              </div>
-            ))}
+            {chartData.map((d, i) => {
+              const heightPct = d.tickets > 0
+                ? Math.max((d.tickets / maxTickets) * 100, 8)
+                : 3
+              return (
+                <div
+                  key={i}
+                  title={`${d.date}: ${d.tickets} ticket${d.tickets !== 1 ? 's' : ''}`}
+                  style={{
+                    flex: 1, height: '100%',
+                    display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+                    cursor: d.tickets > 0 ? 'pointer' : 'default',
+                  }}
+                >
+                  <div style={{
+                    width: '100%', borderRadius: '4px 4px 0 0',
+                    background: d.tickets > 0
+                      ? (i === chartData.length - 1 ? '#6366f1' : 'rgba(99,102,241,0.5)')
+                      : 'rgba(255,255,255,0.04)',
+                    height: `${heightPct}%`,
+                    transition: 'height 0.3s',
+                  }} />
+                </div>
+              )
+            })}
           </div>
+
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
             <span style={{ color: '#4b5563', fontSize: '11px' }}>{chartData[0]?.date}</span>
             <span style={{ color: '#4b5563', fontSize: '11px' }}>{chartData[chartData.length - 1]?.date}</span>
           </div>
+
+          {chartData.every(d => d.tickets === 0) && (
+            <p style={{ color: '#4b5563', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>
+              No ticket sales in this period
+            </p>
+          )}
         </div>
 
         {/* ── Next event + Activity ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,320px)', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,320px)', gap: '16px' }} className="dash-grid">
 
           {/* Next event */}
           <div style={S.card}>
@@ -217,16 +295,15 @@ function OrganizerDashboard() {
                       {nextEvent.title}
                     </h3>
                     <p style={{ color: '#6b7280', fontSize: '13px', margin: 0 }}>
-                      📍 {nextEvent.city} · {new Date(nextEvent.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      📍 {nextEvent.city || nextEvent.venue || 'TBD'} · {new Date(nextEvent.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                   </div>
                 </div>
 
-                {/* Seat stats */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
                   {[
                     { label: 'Sold', value: nextEvent.registered || 0 },
-                    { label: 'Remaining', value: (nextEvent.capacity || 0) - (nextEvent.registered || 0) },
+                    { label: 'Remaining', value: Math.max((nextEvent.capacity || 0) - (nextEvent.registered || 0), 0) },
                   ].map((item, i) => (
                     <div key={i} style={{ background: '#080c14', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '12px' }}>
                       <p style={{ color: '#6b7280', fontSize: '11px', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{item.label}</p>
@@ -235,7 +312,6 @@ function OrganizerDashboard() {
                   ))}
                 </div>
 
-                {/* Progress */}
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                     <span style={{ color: '#6b7280', fontSize: '12px' }}>Capacity</span>
@@ -254,11 +330,11 @@ function OrganizerDashboard() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <Link to={`/organiser/event/${nextEvent._id}/attendees`} style={S.btnPrimary}>
+                  <Link to={`/organiser/attendees?event=${nextEvent._id}`} style={S.btnPrimary}>
                     View attendees
                   </Link>
-                  <Link to={`/event/${nextEvent._id}`} style={S.btnOutline}>
-                    Manage event
+                  <Link to={`/organiser/events`} style={S.btnOutline}>
+                    All events
                   </Link>
                 </div>
               </div>
@@ -275,27 +351,33 @@ function OrganizerDashboard() {
             )}
           </div>
 
-          {/* Recent activity */}
+          {/* Activity feed */}
           <div style={S.card}>
             <div style={S.cardTitle}>Recent activity</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {activities.map(a => (
-                <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                  <div style={{
-                    width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, marginTop: '5px',
-                    background: activityDot[a.type] || '#6b7280',
-                  }} />
-                  <div>
-                    <p style={{ color: '#d1d5db', fontSize: '13px', margin: '0 0 2px', lineHeight: 1.4 }}>{a.text}</p>
-                    <p style={{ color: '#4b5563', fontSize: '12px', margin: 0 }}>{a.time}</p>
+            {activities.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {activities.map((a, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                    <div style={{
+                      width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, marginTop: '5px',
+                      background: activityDot[a.type] || '#6b7280',
+                    }} />
+                    <div>
+                      <p style={{ color: '#d1d5db', fontSize: '13px', margin: '0 0 2px', lineHeight: 1.4 }}>{a.text}</p>
+                      <p style={{ color: '#4b5563', fontSize: '12px', margin: 0 }}>{a.time}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                <p style={{ color: '#4b5563', fontSize: '13px' }}>No recent activity yet</p>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* ── Empty state (no events at all) ── */}
+        {/* ── Empty state ── */}
         {events.length === 0 && (
           <div style={{ ...S.card, textAlign: 'center', padding: '48px 24px' }}>
             <div style={{
@@ -309,25 +391,7 @@ function OrganizerDashboard() {
             <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '24px' }}>
               Start selling tickets and managing attendees in minutes
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '280px', margin: '0 auto' }}>
-              {['Complete your organizer profile', 'Create your first event', 'Set up UPI payout'].map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left' }}>
-                  <div style={{
-                    width: '22px', height: '22px', borderRadius: '6px', flexShrink: 0,
-                    background: i === 0 ? '#6366f1' : 'rgba(255,255,255,0.05)',
-                    border: i === 0 ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '11px', color: i === 0 ? 'white' : '#4b5563', fontWeight: 700,
-                  }}>
-                    {i === 0 ? '✓' : i + 1}
-                  </div>
-                  <span style={{ color: i === 0 ? '#9ca3af' : '#6b7280', fontSize: '13px', textDecoration: i === 0 ? 'line-through' : 'none' }}>
-                    {item}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <Link to="/organiser/create" style={{ ...S.btnPrimary, display: 'inline-flex', marginTop: '24px' }}>
+            <Link to="/organiser/create" style={{ ...S.btnPrimary, display: 'inline-flex', marginTop: '8px' }}>
               Create event →
             </Link>
           </div>
@@ -335,10 +399,14 @@ function OrganizerDashboard() {
 
       </div>
 
-      {/* Responsive styles */}
       <style>{`
-        @media (max-width: 768px) {
+        @keyframes spin { to { transform: rotate(360deg) } }
+        @media (max-width: 900px) {
+          .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
           .dash-grid { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 480px) {
+          .stats-grid { grid-template-columns: 1fr 1fr !important; }
         }
       `}</style>
     </OrganizerLayout>

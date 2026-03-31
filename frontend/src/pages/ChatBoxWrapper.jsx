@@ -2,14 +2,13 @@ import { useParams, useOutletContext } from "react-router-dom"
 import ChatBox from "../components/Chat/ChatBox"
 
 const ChatBoxWrapper = () => {
-  const params = useParams()
-  const eventId = params?.eventId
-  const receiverId = params?.userId
-  const { receiverName } = useOutletContext() || {}
+  const { userId } = useParams()
+  // ✅ eventId comes from ChatInbox outlet context (most recent event for socket room)
+  const { receiverName, eventId } = useOutletContext() || {}
 
-  console.log("📦 ChatBoxWrapper:", { eventId, receiverId, receiverName })
+  console.log("📦 ChatBoxWrapper:", { userId, eventId, receiverName })
 
-  if (!eventId || !receiverId) {
+  if (!userId) {
     return (
       <div className="h-full flex items-center justify-center text-gray-400">
         Select a chat
@@ -19,9 +18,9 @@ const ChatBoxWrapper = () => {
 
   return (
     <ChatBox
-      key={`${eventId}-${receiverId}`}
+      key={userId}
       eventId={eventId}
-      receiverId={receiverId}
+      receiverId={userId}
       receiverName={receiverName}
     />
   )

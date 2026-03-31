@@ -12,7 +12,7 @@ const organizerController = require('../controllers/organizerController')
 // ✅ User conversations
 router.get('/conversations', protect, getConversations)
 
-// ✅ File upload — NEW
+// ✅ File upload
 router.post('/upload', protect, uploadFile)
 
 // ✅ Organizer conversations (inbox)
@@ -22,8 +22,10 @@ router.get(
   organizerController.getOrganizerConversations,
 )
 
-// ✅ 1:1 chat routes — UNTOUCHED
-router.get('/:eventId/:userId/messages', protect, getChatMessages)
+// ✅ FIXED: messages route now uses :userId only — no :eventId
+router.get('/:userId/messages', protect, getChatMessages)
+
+// ✅ Send message still uses :eventId/:userId — socket needs eventId for room auth
 router.post('/:eventId/:userId/messages', protect, sendChatMessage)
 
 module.exports = router

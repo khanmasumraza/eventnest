@@ -49,25 +49,19 @@ const createTicket = async (req, res) => {
     const { eventId } = req.body
     const userId = req.user.id
 
-    // Check if event exists
     const event = await Event.findById(eventId)
     if (!event) {
       return res.status(404).json({ message: 'Event not found' })
     }
 
-    // Check if event is published
     if (event.status !== 'published') {
-      return res
-        .status(400)
-        .json({ message: 'Event is not available for registration' })
+      return res.status(400).json({ message: 'Event is not available for registration' })
     }
 
-    // Check capacity
     if (event.registered >= event.capacity) {
       return res.status(400).json({ message: 'Event is full' })
     }
 
-    // Check if user already has a ticket for this event
     const existingTicket = await Ticket.findOne({
       user: userId,
       event: eventId,
@@ -75,12 +69,9 @@ const createTicket = async (req, res) => {
     })
 
     if (existingTicket) {
-      return res
-        .status(400)
-        .json({ message: 'You already have a ticket for this event' })
+      return res.status(400).json({ message: 'You already have a ticket for this event' })
     }
 
-    // Create pending ticket
     const ticketId = generateTicketId()
     const ticket = new Ticket({
       ticketId,
@@ -91,14 +82,12 @@ const createTicket = async (req, res) => {
 
     await ticket.save()
 
-    // Emit event
     emitToOrganizer(event.organiser.toString(), 'ticketPurchased', {
       ticketId,
       eventId,
       userId,
     })
 
-    // Audit log
     createAuditLog('TICKET_CREATED', userId, eventId, { ticketId })
 
     res.status(201).json({
@@ -117,7 +106,6 @@ const verifyPaymentAndActivateTicket = async (req, res) => {
     const { ticketId, paymentReference, screenshot } = req.body
     const userId = req.user.id
 
-    // Validate required fields
     if (!paymentReference) {
       return res.status(400).json({ message: 'Payment reference is required' })
     }
@@ -127,38 +115,28 @@ const verifyPaymentAndActivateTicket = async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' })
     }
 
-    // Security: Verify ticket belongs to user
     if (ticket.user.toString() !== userId) {
-      return res
-        .status(403)
-        .json({ message: 'Not authorized to submit payment for this ticket' })
+      return res.status(403).json({ message: 'Not authorized to submit payment for this ticket' })
     }
 
     if (ticket.status !== 'pending') {
-      return res
-        .status(400)
-        .json({ message: 'Ticket is not in pending status' })
+      return res.status(400).json({ message: 'Ticket is not in pending status' })
     }
 
-    // Check for existing payment
     const existingPayment = await Payment.findOne({
       ticket: ticket._id,
       status: { $in: ['pending', 'verified'] },
     })
 
     if (existingPayment) {
-      return res
-        .status(400)
-        .json({ message: 'Payment already submitted for this ticket' })
+      return res.status(400).json({ message: 'Payment already submitted for this ticket' })
     }
 
-    // Validate amount matches event price
     const expectedAmount = ticket.event.price
     if (!expectedAmount || expectedAmount <= 0) {
       return res.status(400).json({ message: 'Invalid event price' })
     }
 
-    // Create payment record
     const payment = new Payment({
       event: ticket.event._id,
       user: ticket.user,
@@ -172,19 +150,16 @@ const verifyPaymentAndActivateTicket = async (req, res) => {
 
     await payment.save()
 
-    // Update ticket with payment reference
     ticket.paymentReference = paymentReference
     ticket.paymentScreenshot = screenshot || ''
     await ticket.save()
 
-    // Emit to organizer
     emitToOrganizer(ticket.event.organiser.toString(), 'paymentSubmitted', {
       ticketId,
       paymentId: payment._id,
       eventId: ticket.event._id,
     })
 
-    // Audit log
     createAuditLog('PAYMENT_SUBMITTED', userId, ticket.event._id, {
       ticketId,
       paymentId: payment._id,
@@ -216,23 +191,19 @@ const activateTicket = async (req, res) => {
       return res.status(400).json({ message: 'Ticket is not pending' })
     }
 
-    // Generate QR code
     const qrCode = await generateQRCode(ticketId)
     if (!qrCode) {
       return res.status(500).json({ message: 'Error generating QR code' })
     }
 
-    // Update ticket status
     ticket.status = 'paid'
     ticket.qrCode = qrCode
     await ticket.save()
 
-    // Update event tickets sold
     await Event.findByIdAndUpdate(ticket.event._id, {
       $inc: { registered: 1 },
     })
 
-    // Emit to user
     emitToEvent(ticket.event._id.toString(), 'ticketActivated', {
       ticketId,
     })
@@ -269,16 +240,13 @@ const getMyTickets = async (req, res) => {
   }
 }
 
-// Get single ticket - SECURITY ENHANCED
+// Get single ticket
 const getTicket = async (req, res) => {
   try {
     console.log('📥 Incoming request params:', req.params)
     console.log('🎯 ticketId param:', req.params.ticketId)
-    console.log('🔍 Searching ticketId:', req.params.ticketId)
 
-    const ticket = await Ticket.findOne({
-      ticketId: req.params.ticketId,
-    })
+    const ticket = await Ticket.findOne({ ticketId: req.params.ticketId })
       .populate({
         path: 'event',
         populate: {
@@ -308,7 +276,7 @@ const getTicket = async (req, res) => {
   }
 }
 
-// Verify QR ticket for check-in - SECURITY ENHANCED
+// Verify QR ticket for check-in
 const verifyTicket = async (req, res) => {
   try {
     const { ticketId } = req.params
@@ -317,24 +285,16 @@ const verifyTicket = async (req, res) => {
     const ticket = await Ticket.findOne({ ticketId }).populate('event')
 
     if (!ticket) {
-      return res.status(404).json({
-        valid: false,
-        message: 'Ticket not found',
-      })
+      return res.status(404).json({ valid: false, message: 'Ticket not found' })
     }
 
-    // SECURITY: Check if user is event organizer or admin
     const isOrganizer = ticket.event.organiser.toString() === userId
     const isAdmin = req.user.role === 'admin'
 
     if (!isOrganizer && !isAdmin) {
-      return res.status(403).json({
-        valid: false,
-        message: 'Not authorized to verify tickets',
-      })
+      return res.status(403).json({ valid: false, message: 'Not authorized to verify tickets' })
     }
 
-    // SECURITY: Check if already checked in
     if (ticket.status === 'checked_in') {
       return res.status(400).json({
         valid: false,
@@ -344,7 +304,6 @@ const verifyTicket = async (req, res) => {
       })
     }
 
-    // SECURITY: Check if paid
     if (ticket.status !== 'paid') {
       return res.status(400).json({
         valid: false,
@@ -353,19 +312,16 @@ const verifyTicket = async (req, res) => {
       })
     }
 
-    // Perform check-in
     ticket.status = 'checked_in'
     ticket.checkedInAt = new Date()
     await ticket.save()
 
-    // Emit to organizer
     emitToOrganizer(ticket.event.organiser.toString(), 'checkinSuccess', {
       ticketId,
       eventId: ticket.event._id,
       checkedInAt: ticket.checkedInAt,
     })
 
-    // Audit log
     createAuditLog('TICKET_CHECKED_IN', userId, ticket.event._id, {
       ticketId,
       checkedInAt: ticket.checkedInAt,
@@ -387,7 +343,7 @@ const verifyTicket = async (req, res) => {
   }
 }
 
-// Get attendees for an event (organizer only)
+// Get attendees for a specific event (organizer only)
 const getEventAttendees = async (req, res) => {
   try {
     const { eventId } = req.params
@@ -398,7 +354,6 @@ const getEventAttendees = async (req, res) => {
       return res.status(404).json({ message: 'Event not found' })
     }
 
-    // Security: Only organizer can view attendees
     if (event.organiser.toString() !== userId && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Not authorized' })
     }
@@ -417,6 +372,41 @@ const getEventAttendees = async (req, res) => {
   }
 }
 
+// ✅ NEW — Get ALL tickets across all organizer's events (for Analytics)
+const getOrganizerAllTickets = async (req, res) => {
+  try {
+    const userId = req.user.id
+
+    // Find all events belonging to this organizer
+    const organizerEvents = await Event.find({ organiser: userId }).select('_id')
+    const eventIds = organizerEvents.map(e => e._id)
+
+    if (eventIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        tickets: [],
+      })
+    }
+
+    // Fetch all paid/checked_in tickets for those events
+    const tickets = await Ticket.find({
+      event: { $in: eventIds },
+      status: { $in: ['paid', 'checked_in'] },
+    })
+      .populate('user', 'name email')
+      .populate('event', 'title date price')
+      .sort({ createdAt: -1 })
+
+    res.status(200).json({
+      success: true,
+      tickets,
+    })
+  } catch (error) {
+    console.error('Get organizer all tickets error:', error)
+    res.status(500).json({ message: 'Error fetching tickets' })
+  }
+}
+
 module.exports = {
   createTicket,
   verifyPaymentAndActivateTicket,
@@ -425,4 +415,5 @@ module.exports = {
   getTicket,
   verifyTicket,
   getEventAttendees,
+  getOrganizerAllTickets,  // ✅ new
 }

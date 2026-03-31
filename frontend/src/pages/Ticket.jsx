@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import { useParams, Link, useNavigate } from "react-router-dom"
 import api from "../utils/api"
-  import html2canvas from 'html2canvas'
+import html2canvas from 'html2canvas'
 
 function logError(type, payload) {
   if (process.env.NODE_ENV === "development") console.error(type, payload)
@@ -84,7 +84,7 @@ const STYLES = `
       );
   }
 
-@media print {
+  @media print {
     @page {
       margin: 0;
       size: auto;
@@ -92,8 +92,8 @@ const STYLES = `
     nav,
     .tk-actions,
     .tk-page-label,
-    .tk-footer { 
-      display: none !important; 
+    .tk-footer {
+      display: none !important;
     }
     body {
       -webkit-print-color-adjust: exact !important;
@@ -128,14 +128,12 @@ const STYLES = `
   }
 `;
 
-/* Get initials from event title */
 const getInitials = (title = "") => {
   const words = title.trim().split(/\s+/)
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
   return (words[0][0] + words[1][0]).toUpperCase()
 }
 
-/* Accent color from initials — deterministic, not random */
 const getAccentColor = (title = "") => {
   const colors = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"]
   const idx = title.charCodeAt(0) % colors.length
@@ -144,7 +142,7 @@ const getAccentColor = (title = "") => {
 
 function Ticket() {
   const { ticketId }            = useParams()
-  const navigate = useNavigate();
+  const navigate                = useNavigate()
   const [ticket, setTicket]     = useState(null)
   const [event, setEvent]       = useState(null)
   const [loading, setLoading]   = useState(true)
@@ -201,11 +199,10 @@ function Ticket() {
     const ticketUrl = window.location.href
     const shareText = `🎫 I'm attending ${event?.title || "an event"}! Here's my ticket: ${ticketUrl}`
 
-    // Mobile — try native share with image
     if (navigator.share) {
       try {
         setShareLabel("…")
-        
+
         const canvas = await html2canvas(ticketRef.current, {
           backgroundColor: "#0f1623",
           scale: 2,
@@ -230,7 +227,7 @@ function Ticket() {
                 `ticket-${ticket.ticketId}.png`,
                 { type: "image/png" }
               )
-              
+
               if (navigator.canShare && navigator.canShare({ files: [file] })) {
                 try {
                   await navigator.share({
@@ -241,12 +238,9 @@ function Ticket() {
                   setShareLabel("Share")
                   resolve()
                   return
-                } catch (e) {
-                  // user cancelled — do nothing
-                }
+                } catch (e) {}
               }
-              
-              // fallback to URL share on mobile
+
               try {
                 await navigator.share({
                   title: event?.title || "My Ticket",
@@ -254,48 +248,55 @@ function Ticket() {
                   url: ticketUrl,
                 })
               } catch (e) {}
-              
+
               setShareLabel("Share")
               resolve()
             }
           }, "image/png")
         })
-        
+
       } catch (err) {
         setShareLabel("Share")
       }
       return
     }
 
-    // Desktop — open WhatsApp Web directly
     const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`
     window.open(waUrl, "_blank")
   }
 
+  // ── FIXED: eventId bhi state mein pass karo ──────────────────────────
   const handleChatNavigation = async () => {
-    const eventId =
-      typeof ticket?.event === "object"
-        ? ticket?.event?._id
-        : ticket?.event
-
     const organizerId =
-      event?.organiser?._id?.toString() || (typeof event?.organiser === 'string' ? event?.organiser : null) ||
-      event?.organizer?._id?.toString() || (typeof event?.organizer === 'string' ? event?.organizer : null) ||
-      ticket?.event?.organiser?._id?.toString() || (typeof ticket?.event?.organiser === 'string' ? ticket?.event?.organiser : null) ||
-      ticket?.event?.organizer?._id?.toString() || (typeof ticket?.event?.organizer === 'string' ? ticket?.event?.organizer : null) ||
+      event?.organiser?._id?.toString() ||
+      (typeof event?.organiser === 'string' ? event?.organiser : null) ||
+      event?.organizer?._id?.toString() ||
+      (typeof event?.organizer === 'string' ? event?.organizer : null) ||
+      ticket?.event?.organiser?._id?.toString() ||
+      (typeof ticket?.event?.organiser === 'string' ? ticket?.event?.organiser : null) ||
+      ticket?.event?.organizer?._id?.toString() ||
+      (typeof ticket?.event?.organizer === 'string' ? ticket?.event?.organizer : null) ||
       ticket?.organiser?._id?.toString() || ticket?.organiser ||
       ticket?.organizer?._id?.toString() || ticket?.organizer
 
-    console.log("CHAT NAV:", { eventId, organizerId })
+    // ✅ Resolve eventId from all possible sources
+    const eventId =
+      event?._id?.toString() ||
+      ticket?.event?._id?.toString() ||
+      ticket?.eventId?.toString() ||
+      null
 
-    const isValid = (id) => /^[0-9a-fA-F]{24}$/.test(id)
+    console.log("CHAT NAV → organizerId:", organizerId, "eventId:", eventId)
 
-    if (!isValid(eventId) || !isValid(organizerId)) {
-      console.error("Invalid navigation IDs", { eventId, organizerId })
-      alert("Chat not available yet")
+    const isValidMongoId = (id) => /^[0-9a-fA-F]{24}$/.test(id)
+
+    if (!isValidMongoId(organizerId)) {
+      console.error("Invalid organizerId:", organizerId)
+      alert("Chat is not available for this event yet.")
       return
     }
 
+    // Check if conversation already exists — reuse it
     try {
       const token = localStorage.getItem("token")
       const res = await fetch("http://localhost:5000/api/chat/conversations", {
@@ -304,11 +305,14 @@ function Ticket() {
       const data = await res.json()
       if (data.success && data.conversations?.length > 0) {
         const existing = data.conversations.find(
-          (c) => c.userId?.toString() === organizerId?.toString()
+          (c) => c.userId?.toString() === organizerId
         )
-        if (existing?.eventId) {
-          console.log("♻️ Reusing existing chat:", existing.eventId)
-          navigate(`/chat/${existing.eventId}/${organizerId}`)
+        if (existing) {
+          console.log("♻️ Reusing existing chat with:", organizerId)
+          // ✅ eventId state mein pass karo (existing conversation)
+          navigate(`/chat/${organizerId}`, {
+            state: { eventId: existing.eventId?.toString() || eventId }
+          })
           return
         }
       }
@@ -316,7 +320,10 @@ function Ticket() {
       console.error("Chat check failed:", err)
     }
 
-    navigate(`/chat/${eventId}/${organizerId}`)
+    // ✅ New conversation — eventId state mein pass karo
+    navigate(`/chat/${organizerId}`, {
+      state: { eventId }
+    })
   }
 
   /* ── LOADING ── */
@@ -361,9 +368,9 @@ function Ticket() {
 
   if (!ticket?.qrCode) logError("MISSING_QR", { ticketId: ticket?.ticketId })
 
-  const eventDate   = event?.date ? new Date(event.date) : null
-  const initials    = getInitials(event.title)
-  const accentColor = getAccentColor(event.title)
+  const eventDate    = event?.date ? new Date(event.date) : null
+  const initials     = getInitials(event.title)
+  const accentColor  = getAccentColor(event.title)
   const showFallback = imgError || !event.image
 
   const dateStr = eventDate
@@ -388,7 +395,7 @@ function Ticket() {
           padding: "24px 16px 48px",
         }}
       >
-        {/* ── Page label ── */}
+        {/* Page label */}
         <p
           className="tk-page-label"
           style={{
@@ -400,7 +407,7 @@ function Ticket() {
           Your Digital Event Pass
         </p>
 
-        {/* ── TICKET CARD ── */}
+        {/* TICKET CARD */}
         <motion.div
           className="tk-card tk-card-ref"
           ref={ticketRef}
@@ -409,7 +416,6 @@ function Ticket() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: .5, ease: [.22, 1, .36, 1] }}
         >
-
           {/* STATUS BAR */}
           <div
             className="tk-status-bar"
@@ -450,7 +456,6 @@ function Ticket() {
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             ) : (
-              /* Clean initials fallback — same dark language as dashboard */
               <div
                 className="tk-initials-bg"
                 style={{
@@ -459,7 +464,6 @@ function Ticket() {
                   position: "relative",
                 }}
               >
-                {/* Accent glow behind initials */}
                 <div style={{
                   position: "absolute",
                   width: 120, height: 120, borderRadius: "50%",
@@ -483,7 +487,6 @@ function Ticket() {
                 </div>
               </div>
             )}
-            {/* Bottom fade */}
             <div style={{
               position: "absolute", bottom: 0, left: 0, right: 0, height: 48,
               background: "linear-gradient(to top, #0f1623, transparent)",
@@ -581,7 +584,9 @@ function Ticket() {
                 fontSize: 17, fontWeight: 800, color: "#f0f4ff", margin: 0,
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
               }}>
-                ₹{event.price ?? ticket.amount}
+                {event.price === 0 || event.price == null
+                  ? "Free"
+                  : `₹${event.price ?? ticket.amount}`}
               </p>
             </div>
           </div>
@@ -618,16 +623,14 @@ function Ticket() {
             display: "flex", justifyContent: "center", gap: 14, flexWrap: "wrap",
           }}>
             {["📱 Mobile valid", "🪪 Bring valid ID", "🚫 No refunds"].map((item) => (
-              <span key={item} style={{
-                fontSize: 10, color: "#374151", fontWeight: 600,
-              }}>
+              <span key={item} style={{ fontSize: 10, color: "#374151", fontWeight: 600 }}>
                 {item}
               </span>
             ))}
           </div>
         </motion.div>
 
-        {/* ── ACTIONS ── */}
+        {/* ACTIONS */}
         <motion.div
           className="tk-actions"
           style={{ width: "100%", maxWidth: 420, marginTop: 14, display: "flex", flexDirection: "column", gap: 9 }}
@@ -640,12 +643,7 @@ function Ticket() {
             <button
               onClick={() => {
                 const style = document.createElement('style')
-                style.innerHTML = `
-                  * { 
-                    -webkit-print-color-adjust: exact !important; 
-                    print-color-adjust: exact !important; 
-                  }
-                `
+                style.innerHTML = `* { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }`
                 document.head.appendChild(style)
                 window.print()
                 setTimeout(() => document.head.removeChild(style), 1000)
@@ -681,9 +679,9 @@ function Ticket() {
             </button>
           </div>
 
-          {/* Chat button */}
+          {/* Chat with Organizer */}
           <button
-            onClick={handleChatNavigation}            
+            onClick={handleChatNavigation}
             className="tk-btn"
             style={{
               width: "100%",
@@ -702,21 +700,18 @@ function Ticket() {
               transition: "all .15s ease",
             }}
             onMouseEnter={(e) => {
-              e.target.style.background = "#6366f1"
-              e.target.style.borderColor = "#6366f1"
-              e.target.style.color = "#fff"
+              e.currentTarget.style.background = "#6366f1"
+              e.currentTarget.style.borderColor = "#6366f1"
+              e.currentTarget.style.color = "#fff"
             }}
             onMouseLeave={(e) => {
-              e.target.style.background = "#0f1623"
-              e.target.style.borderColor = "rgba(255,255,255,.07)"
-              e.target.style.color = "#a5b4fc"
+              e.currentTarget.style.background = "#0f1623"
+              e.currentTarget.style.borderColor = "rgba(255,255,255,.07)"
+              e.currentTarget.style.color = "#a5b4fc"
             }}
           >
             💬 Chat with Organizer
           </button>
-
-          {/* Dashboard */}
-
         </motion.div>
 
         {/* Footer */}

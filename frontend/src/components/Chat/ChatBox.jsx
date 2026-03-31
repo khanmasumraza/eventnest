@@ -5,7 +5,7 @@ import { useAuth } from "../../context/AuthContext"
 import MessageBubble from "./MessageBubble"
 import api from "../../utils/api"
 
-const ChatBox = ({ eventId, receiverId, receiverName }) => {
+const ChatBox = ({ eventId: propEventId, receiverId, receiverName }) => {
   const outletContext = useOutletContext() || {}
   const navigate = useNavigate()
   const [messages, setMessages] = useState([])
@@ -15,6 +15,9 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
   const [uploading, setUploading] = useState(false)
   const [fetchedName, setFetchedName] = useState(null)
   const [isOnline, setIsOnline] = useState(false)
+  // ── eventId: prop → outlet context → fetched from API
+  const [resolvedEventId, setResolvedEventId] = useState(propEventId || outletContext.eventId || null)
+
   const { socket, connected, joinChat } = useSocket()
   const { user } = useAuth()
   const currentUserId = user?._id?.toString()
@@ -22,8 +25,18 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
   const typingTimeoutRef = useRef(null)
   const fileInputRef = useRef(null)
   const initialScrollDone = useRef(false)
+  const scrollContainerRef = useRef(null)
+  const lastMessageIdRef = useRef(null)
 
-  // ✅ FETCH RECEIVER NAME DIRECTLY — no dependency on ChatInbox
+  // ── Keep resolvedEventId in sync if outlet context eventually provides it
+  useEffect(() => {
+    const ctxEventId = outletContext.eventId
+    if (!resolvedEventId && ctxEventId) {
+      setResolvedEventId(ctxEventId)
+    }
+  }, [outletContext.eventId])
+
+  // ── FETCH RECEIVER NAME
   useEffect(() => {
     if (!receiverId) return
     setFetchedName(null)
@@ -33,17 +46,12 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
     })
       .then((r) => r.json())
       .then((data) => {
-        // ✅ data.name directly — no data.user wrapper
         const name = data?.name || data?.email?.split("@")[0] || null
-        if (name) {
-          console.log("✅ ChatBox fetched name:", name)
-          setFetchedName(name)
-        }
+        if (name) setFetchedName(name)
       })
       .catch(console.error)
   }, [receiverId])
 
-  // ✅ displayName — fetchedName has highest priority
   const displayName =
     fetchedName ||
     receiverName ||
@@ -61,26 +69,35 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
     "User"
 
   const isValidId = (id) => /^[0-9a-fA-F]{24}$/.test(id)
-  const valid = isValidId(eventId) && isValidId(receiverId) && isValidId(currentUserId)
+  const validReceiver = isValidId(receiverId) && isValidId(currentUserId)
 
-  // RESET
+  // ── RESET on chat change
   useEffect(() => {
     setMessages([])
     setIsTyping(false)
     setIsOnline(false)
     initialScrollDone.current = false
-  }, [eventId, receiverId])
+    // Sync eventId from prop or context on switch
+    setResolvedEventId(propEventId || outletContext.eventId || null)
+  }, [receiverId])
 
-  // LOAD MESSAGES
+  // ── LOAD MESSAGES — no eventId needed
   useEffect(() => {
-    if (!valid) return
+    if (!validReceiver) return
     let isActive = true
     setLoading(true)
     const loadMessages = async () => {
       try {
-        const res = await api.get(`/chat/${eventId}/${receiverId}/messages`)
+        const res = await api.get(`/chat/${receiverId}/messages`)
         if (!isActive) return
-        setMessages(res.data.messages || [])
+        const msgs = res.data.messages || []
+        setMessages(msgs)
+
+        // ── If we still don't have an eventId, grab it from message history
+        if (!resolvedEventId && msgs.length > 0) {
+          const eid = msgs[msgs.length - 1]?.eventId?.toString()
+          if (eid) setResolvedEventId(eid)
+        }
       } catch (err) {
         console.error(err)
       } finally {
@@ -89,13 +106,38 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
     }
     loadMessages()
     return () => { isActive = false }
-  }, [eventId, receiverId, valid])
+  }, [receiverId, validReceiver])
 
-  // JOIN ROOM
+  // ── If STILL no eventId after messages load, fetch from conversations API
   useEffect(() => {
-    if (!connected || !valid) return
-    joinChat({ eventId, userId: receiverId })
-  }, [connected, eventId, receiverId, valid, joinChat])
+    if (resolvedEventId || !validReceiver) return
+    const fetchEventId = async () => {
+      try {
+        const token = localStorage.getItem("token")
+        const res = await fetch("http://localhost:5000/api/chat/conversations", {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const data = await res.json()
+        if (data.success && data.conversations?.length > 0) {
+          const match = data.conversations.find(
+            (c) => c.userId?.toString() === receiverId
+          )
+          if (match?.eventId) {
+            setResolvedEventId(match.eventId.toString())
+          }
+        }
+      } catch (err) {
+        console.error("eventId fetch fallback failed:", err)
+      }
+    }
+    fetchEventId()
+  }, [resolvedEventId, receiverId, validReceiver])
+
+  // ── JOIN SOCKET ROOM — only when eventId is available
+  useEffect(() => {
+    if (!connected || !validReceiver || !resolvedEventId) return
+    joinChat({ eventId: resolvedEventId, userId: receiverId })
+  }, [connected, resolvedEventId, receiverId, validReceiver, joinChat])
 
   const getSenderId = (senderId) => {
     if (!senderId) return ''
@@ -106,28 +148,24 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
   const belongsToChat = (msg) => {
     const sId = getSenderId(msg.senderId)
     const rId = msg.receiverId?.toString()
-    const eId = msg.eventId?.toString()
     const recv = receiverId?.toString()
-    const evnt = eventId?.toString()
-    if (eId && eId !== evnt) return false
     return (sId === currentUserId && rId === recv) || (sId === recv && rId === currentUserId)
   }
 
-  // SOCKET — messages + typing + ✅ messageUpdated for real-time tick fix
+  // ── SOCKET listeners
   useEffect(() => {
-    if (!socket || !valid) return
-
+    if (!socket || !validReceiver) return
     const handleNewMessage = (msg) => {
       if (!belongsToChat(msg)) return
+      // If we got a message and still don't have eventId, grab it
+      if (!resolvedEventId && msg.eventId) {
+        setResolvedEventId(msg.eventId.toString())
+      }
       setMessages((prev) => {
         if (prev.find((m) => m._id?.toString() === msg._id?.toString())) return prev
         return [...prev, msg]
       })
     }
-
-    // ✅ FIX 1 — messageUpdated listener was missing entirely
-    // Backend emits this when receiver marks messages as seen
-    // This makes sender's single gray tick → double blue tick in real-time
     const handleMessageUpdated = (updated) => {
       if (!updated?._id) return
       setMessages((prev) =>
@@ -138,73 +176,65 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
         )
       )
     }
-
     const handleTyping = (data) => {
       const dSender = data.senderId?.toString?.() || data.userId?.toString()
-      if (dSender === receiverId?.toString() && (data.eventId === eventId || !data.eventId)) setIsTyping(true)
+      if (dSender === receiverId?.toString()) setIsTyping(true)
     }
     const handleStopTyping = (data) => {
       const dSender = data.senderId?.toString?.() || data.userId?.toString()
-      if (dSender === receiverId?.toString() && (data.eventId === eventId || !data.eventId)) setIsTyping(false)
+      if (dSender === receiverId?.toString()) setIsTyping(false)
     }
-
     socket.off("newMessage")
     socket.on("newMessage", handleNewMessage)
-    socket.off("messageUpdated")                          // ✅ added
-    socket.on("messageUpdated", handleMessageUpdated)     // ✅ added
+    socket.off("messageUpdated")
+    socket.on("messageUpdated", handleMessageUpdated)
     socket.off("typing")
     socket.on("typing", handleTyping)
     socket.off("stopTyping")
     socket.on("stopTyping", handleStopTyping)
     socket.off("userTyping")
     socket.on("userTyping", handleTyping)
-
     return () => {
       socket.off("newMessage", handleNewMessage)
-      socket.off("messageUpdated", handleMessageUpdated)  // ✅ added
+      socket.off("messageUpdated", handleMessageUpdated)
       socket.off("typing", handleTyping)
       socket.off("stopTyping", handleStopTyping)
       socket.off("userTyping", handleTyping)
     }
-  }, [socket, eventId, receiverId, valid, currentUserId])
+  }, [socket, resolvedEventId, receiverId, validReceiver, currentUserId])
 
-  // ✅ FIX 2 — emit markSeen when receiver opens the chat
-  // This triggers backend to update status → 'seen' and emit messageUpdated to sender
+  // ── markSeen
   useEffect(() => {
-    if (!socket || !valid) return
-    socket.emit("markSeen", { eventId, userId: currentUserId })
-  }, [socket, eventId, receiverId, valid, currentUserId])
+    if (!socket || !validReceiver || !resolvedEventId) return
+    socket.emit("markSeen", { eventId: resolvedEventId, userId: currentUserId })
+  }, [socket, resolvedEventId, receiverId, validReceiver, currentUserId])
 
-  // ✅ Online/offline status
+  // ── Online/offline
   useEffect(() => {
     if (!socket || !receiverId) return
-
     const handleOnline = (data) => {
       if (data.userId?.toString() === receiverId?.toString()) setIsOnline(true)
     }
     const handleOffline = (data) => {
       if (data.userId?.toString() === receiverId?.toString()) setIsOnline(false)
     }
-
     socket.on('userOnline', handleOnline)
     socket.on('userOffline', handleOffline)
-
     return () => {
       socket.off('userOnline', handleOnline)
       socket.off('userOffline', handleOffline)
     }
   }, [socket, receiverId])
 
-  // SEND TEXT
+  // ── SEND TEXT
   const handleSend = () => {
-    if (!newMessage.trim() || !valid) return
+    if (!newMessage.trim() || !validReceiver || !resolvedEventId) return
     const text = newMessage.trim()
     setNewMessage("")
-
     const tempId = `temp-${Date.now()}`
     const optimisticMsg = {
       _id: tempId,
-      eventId,
+      eventId: resolvedEventId,
       senderId: currentUserId,
       receiverId,
       message: text,
@@ -212,9 +242,8 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
       status: 'sent',
     }
     setMessages((prev) => [...prev, optimisticMsg])
-
     socket.emit("sendMessage", {
-      eventId,
+      eventId: resolvedEventId,
       senderId: currentUserId,
       receiverId,
       message: text,
@@ -225,13 +254,10 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
         return
       }
       if (ack?.message) {
-        setMessages((prev) =>
-          prev.map((m) => m._id === tempId ? ack.message : m)
-        )
+        setMessages((prev) => prev.map((m) => m._id === tempId ? ack.message : m))
       }
     })
-
-    socket.emit("stopTyping", { eventId, senderId: currentUserId, receiverId })
+    socket.emit("stopTyping", { eventId: resolvedEventId, senderId: currentUserId, receiverId })
   }
 
   const handleKeyDown = (e) => {
@@ -243,27 +269,25 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
 
   const handleInputChange = (e) => {
     setNewMessage(e.target.value)
-    if (!socket || !valid) return
-    socket.emit("typing", { eventId, senderId: currentUserId, receiverId })
+    if (!socket || !validReceiver || !resolvedEventId) return
+    socket.emit("typing", { eventId: resolvedEventId, senderId: currentUserId, receiverId })
     clearTimeout(typingTimeoutRef.current)
     typingTimeoutRef.current = setTimeout(() => {
-      socket.emit("stopTyping", { eventId, senderId: currentUserId, receiverId })
+      socket.emit("stopTyping", { eventId: resolvedEventId, senderId: currentUserId, receiverId })
     }, 1500)
   }
 
-  // FILE SEND
+  // ── FILE SEND
   const handleFileChange = async (e) => {
     const file = e.target.files[0]
-    if (!file || !valid || !socket) return
+    if (!file || !validReceiver || !socket || !resolvedEventId) return
     setUploading(true)
-
     const tempId = `temp-file-${Date.now()}`
     const isImage = file.type.startsWith("image/")
     const localUrl = URL.createObjectURL(file)
-
     const optimisticMsg = {
       _id: tempId,
-      eventId,
+      eventId: resolvedEventId,
       senderId: currentUserId,
       receiverId,
       message: "",
@@ -275,20 +299,17 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
       status: 'sent',
     }
     setMessages((prev) => [...prev, optimisticMsg])
-
     try {
       const formData = new FormData()
       formData.append("file", file)
-      formData.append("eventId", eventId)
+      formData.append("eventId", resolvedEventId)
       formData.append("receiverId", receiverId)
-
       const res = await api.post("/chat/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" }
       })
-
       if (res.data?.success && res.data?.fileUrl) {
         const filePayload = {
-          eventId,
+          eventId: resolvedEventId,
           senderId: currentUserId,
           receiverId,
           fileUrl: res.data.fileUrl,
@@ -296,7 +317,6 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
           fileType: file.type,
           type: isImage ? "image" : "file",
         }
-
         socket.emit("sendMessage", filePayload, (ack) => {
           if (ack?.success) {
             setMessages((prev) =>
@@ -327,34 +347,22 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
     }
   }
 
-  const scrollContainerRef = useRef(null)
-  const lastMessageIdRef = useRef(null)
-
+  // ── SCROLL
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
-
     if (!loading && !initialScrollDone.current) {
       container.scrollTop = container.scrollHeight
       initialScrollDone.current = true
       lastMessageIdRef.current = messages[messages.length - 1]?._id
       return
     }
-
     if (!initialScrollDone.current) return
-
     const lastMsg = messages[messages.length - 1]
     if (!lastMsg) return
-
     if (lastMsg._id === lastMessageIdRef.current) return
     lastMessageIdRef.current = lastMsg._id
-
-    const isOwnMessage = getSenderId(lastMsg.senderId) === currentUserId
-    if (isOwnMessage) {
-      container.scrollTop = container.scrollHeight
-    } else {
-      container.scrollTop = container.scrollHeight
-    }
+    container.scrollTop = container.scrollHeight
   }, [messages, isTyping, loading])
 
   const getDateLabel = (dateStr) => {
@@ -371,13 +379,11 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
     const items = []
     let lastDate = null
     let lastSenderId = null
-
     messages.forEach((msg, i) => {
       const msgDate = getDateLabel(msg.createdAt)
       const isOwn = getSenderId(msg.senderId) === currentUserId
       const nextMsg = messages[i + 1]
       const isSameSenderNext = nextMsg && getSenderId(nextMsg.senderId) === getSenderId(msg.senderId)
-
       if (msgDate !== lastDate) {
         items.push(
           <div key={`date-${i}`} className="flex justify-center my-4">
@@ -388,33 +394,27 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
         )
         lastDate = msgDate
       }
-
-      const showAvatar = !isSameSenderNext
-      const showName = getSenderId(lastSenderId) !== getSenderId(msg.senderId)
-
       items.push(
         <MessageBubble
-          key={`${eventId}-${msg._id}`}
+          key={`${msg._id}`}
           message={msg}
           isOwn={isOwn}
-          showAvatar={showAvatar}
-          showName={showName}
+          showAvatar={!isSameSenderNext}
+          showName={getSenderId(lastSenderId) !== getSenderId(msg.senderId)}
         />
       )
-
       lastSenderId = msg.senderId
     })
-
     return items
   }
 
+  // ── Send button disabled state — if no eventId yet, show hint
+  const canSend = !!resolvedEventId && !!newMessage.trim() && !uploading
+
   return (
     <div className="h-full flex flex-col bg-slate-900 rounded-xl overflow-hidden">
-
       {/* HEADER */}
       <div className="flex items-center gap-3 px-3 sm:px-5 py-3 sm:py-3.5 border-b border-slate-700/60 bg-slate-800">
-
-        {/* Back button — mobile only */}
         <button
           onClick={() => navigate("/chat")}
           className="lg:hidden flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-700 transition-colors"
@@ -424,8 +424,6 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-
-        {/* Avatar + name */}
         <div className="relative flex-shrink-0">
           <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm">
             {displayName?.[0]?.toUpperCase() || ''}
@@ -436,11 +434,8 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
             }`}
           />
         </div>
-
         <div className="flex-1 min-w-0">
-          <p className="text-white text-sm font-semibold leading-tight truncate">
-            {displayName}
-          </p>
+          <p className="text-white text-sm font-semibold leading-tight truncate">{displayName}</p>
           <p className={`text-xs transition-colors duration-300 ${isOnline ? 'text-green-400' : 'text-gray-500'}`}>
             {isOnline ? 'Online' : 'Offline'}
           </p>
@@ -466,8 +461,6 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
         ) : (
           renderMessages()
         )}
-
-        {/* TYPING INDICATOR */}
         {isTyping && (
           <div className="flex items-end gap-2 mt-2">
             <div className="w-7 h-7 rounded-full bg-slate-600 flex items-center justify-center text-white text-xs">
@@ -482,17 +475,21 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
             </div>
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </div>
 
       {/* INPUT */}
       <div className="px-3 sm:px-4 py-3 border-t border-slate-700/60 bg-slate-800">
+        {/* If eventId still resolving, show subtle hint */}
+        {!resolvedEventId && !loading && (
+          <p className="text-xs text-gray-500 text-center mb-2">
+            Setting up chat session…
+          </p>
+        )}
         <div className="flex items-center gap-2 bg-slate-700/50 rounded-2xl px-3 py-2">
-
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || !resolvedEventId}
             className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-600/60 transition disabled:opacity-40"
             title="Send file"
           >
@@ -507,25 +504,18 @@ const ChatBox = ({ eventId, receiverId, receiverName }) => {
               </svg>
             )}
           </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
           <input
             value={newMessage}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent text-white placeholder-gray-500 text-sm focus:outline-none py-1"
-            placeholder="Type a message..."
+            disabled={!resolvedEventId && !loading}
+            className="flex-1 bg-transparent text-white placeholder-gray-500 text-sm focus:outline-none py-1 disabled:opacity-50"
+            placeholder={resolvedEventId ? "Type a message..." : "Setting up chat…"}
           />
-
           <button
             onClick={handleSend}
-            disabled={!newMessage.trim() && !uploading}
+            disabled={!canSend}
             className="flex-shrink-0 w-8 h-8 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
