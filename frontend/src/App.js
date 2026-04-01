@@ -12,7 +12,6 @@ import Tickets from './pages/Tickets'
 import Profile from './pages/Profile'
 import Checkout from './pages/Checkout'
 import Ticket from './pages/Ticket'
-import Attendees from './pages/Attendees'
 import CheckIn from './pages/CheckIn'
 import PaymentRequired from './pages/PaymentRequired'
 import OrganizerStart from './pages/OrganizerStart'
@@ -21,28 +20,23 @@ import OrganizerEvents from './pages/OrganizerEvents'
 import OrganizerCreateEvent from './pages/OrganizerCreateEvent'
 import OrganizerAnalytics from './pages/OrganizerAnalytics'
 import OrganizerPayouts from './pages/OrganizerPayouts'
-import OrganizerSettings from './pages/OrganizerSettings'
-import OrganizerInbox from './pages/OrganizerInbox'
+
 import OrganizerTickets from './pages/OrganizerTickets'
-import OrganizerChat from './pages/OrganizerChat'
 import ChatInbox from './pages/ChatInbox'
 import ChatBoxWrapper from './pages/ChatBoxWrapper'
 import EventDetails from './components/EventDetails'
-import EventChat from './pages/EventChat'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SocketProvider } from './context/SocketContext'
 import { ChatProvider } from './context/chatContext'
 
-// ─── Layouts ────────────────────────────────────────────────────────────────
-
-const OrganizerLayout = () => (
+// ─── Organiser shell (no global navbar) ────────────────────────────────────
+const OrganizerShell = () => (
   <div style={{ minHeight: '100vh', background: '#080c14' }}>
     <Outlet />
   </div>
 )
 
-// ─── Guards ─────────────────────────────────────────────────────────────────
-
+// ─── Auth guard ─────────────────────────────────────────────────────────────
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isInitialized } = useAuth()
 
@@ -62,84 +56,122 @@ const ProtectedRoute = ({ children }) => {
 }
 
 // ─── App ────────────────────────────────────────────────────────────────────
-
 function AppContent() {
   return (
     <Routes>
-
-      {/* ── AUTH — no navbar ───────────────────────────────────────────── */}
+      {/* ── AUTH ── */}
       <Route
         path="/login"
-        element={<AuthLayout><Login /></AuthLayout>}
+        element={
+          <AuthLayout>
+            <Login />
+          </AuthLayout>
+        }
       />
       <Route
         path="/payment-required"
-        element={<AuthLayout><PaymentRequired /></AuthLayout>}
+        element={
+          <AuthLayout>
+            <PaymentRequired />
+          </AuthLayout>
+        }
       />
       <Route path="/auth/success" element={<AuthSuccess />} />
 
-      {/* ── ORGANISER — OrganizerLayout (NO global navbar) ─────────────── */}
-      <Route element={<OrganizerLayout />}>
-
+      {/* ── ORGANISER (no global navbar) ── */}
+      <Route element={<OrganizerShell />}>
         <Route
           path="organiser"
           element={<Navigate to="/organiser/dashboard" replace />}
         />
         <Route
-          path="organiser/start"
-          element={<ProtectedRoute><OrganizerStart /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/dashboard"
-          element={<ProtectedRoute><OrganizerDashboard /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/events"
-          element={<ProtectedRoute><OrganizerEvents /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/create"
-          element={<ProtectedRoute><OrganizerCreateEvent /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/attendees"
-          element={<ProtectedRoute><OrganizerTickets /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/tickets"
-          element={<ProtectedRoute><OrganizerTickets /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/analytics"
-          element={<ProtectedRoute><OrganizerAnalytics /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/payouts"
-          element={<ProtectedRoute><OrganizerPayouts /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/settings"
-          element={<ProtectedRoute><OrganizerSettings /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/inbox"
-          element={<ProtectedRoute><OrganizerInbox /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/event/:id/attendees"
-          element={<ProtectedRoute><Attendees /></ProtectedRoute>}
-        />
-        <Route
-          path="organiser/checkin"
-          element={<ProtectedRoute><CheckIn /></ProtectedRoute>}
-        />
-        <Route
           path="organizer/*"
           element={<Navigate to="/organiser/dashboard" replace />}
         />
+
+        <Route
+          path="organiser/start"
+          element={
+            <ProtectedRoute>
+              <OrganizerStart />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organiser/dashboard"
+          element={
+            <ProtectedRoute>
+              <OrganizerDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organiser/events"
+          element={
+            <ProtectedRoute>
+              <OrganizerEvents />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organiser/create"
+          element={
+            <ProtectedRoute>
+              <OrganizerCreateEvent />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organiser/analytics"
+          element={
+            <ProtectedRoute>
+              <OrganizerAnalytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organiser/payouts"
+          element={
+            <ProtectedRoute>
+              <OrganizerPayouts />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Attendees + Tickets → same component. /attendees redirects to /tickets */}
+        <Route
+          path="organiser/tickets"
+          element={
+            <ProtectedRoute>
+              <OrganizerTickets />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="organiser/attendees"
+          element={<Navigate to="/organiser/tickets" replace />}
+        />
+
+        {/* Legacy / unused routes kept as redirects so nothing 404s */}
+        <Route
+          path="organiser/inbox"
+          element={<Navigate to="/organiser/dashboard" replace />}
+        />
+        <Route
+          path="organiser/event/:id/attendees"
+          element={<Navigate to="/organiser/tickets" replace />}
+        />
+        <Route
+          path="organiser/checkin"
+          element={
+            <ProtectedRoute>
+              <CheckIn />
+            </ProtectedRoute>
+          }
+        />
       </Route>
 
-      {/* ── MAIN — with global navbar ───────────────────────────────────── */}
+      {/* ── MAIN (with global navbar) ── */}
       <Route element={<MainLayout />}>
         <Route index element={<Home />} />
         <Route path="explore" element={<Explore />} />
@@ -149,31 +181,49 @@ function AppContent() {
 
         <Route
           path="dashboard"
-          element={<ProtectedRoute><Dashboard /></ProtectedRoute>}
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="tickets"
-          element={<ProtectedRoute><Tickets /></ProtectedRoute>}
+          element={
+            <ProtectedRoute>
+              <Tickets />
+            </ProtectedRoute>
+          }
         />
         <Route
           path="profile"
-          element={<ProtectedRoute><Profile /></ProtectedRoute>}
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
         />
 
-        {/* ✅ FIXED: chat route now uses only :userId — no :eventId */}
         <Route
           path="chat"
-          element={<ProtectedRoute><ChatInbox /></ProtectedRoute>}
+          element={
+            <ProtectedRoute>
+              <ChatInbox />
+            </ProtectedRoute>
+          }
         >
           <Route path=":userId" element={<ChatBoxWrapper />} />
         </Route>
 
         <Route
           path="admin"
-          element={<ProtectedRoute><div>Admin Panel</div></ProtectedRoute>}
+          element={
+            <ProtectedRoute>
+              <div>Admin Panel</div>
+            </ProtectedRoute>
+          }
         />
       </Route>
-
     </Routes>
   )
 }

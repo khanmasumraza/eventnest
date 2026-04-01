@@ -1,10 +1,1 @@
-# Event Publish API Multer Fix - TODO
-
-✅ **Step 1:** Create TODO.md ✓
-✅ **Step 2:** Update backend/routes/eventRoutes.js ✓
-✅ **Step 3:** Update backend/controllers/eventController.js ✓
-
-**Step 4:** Test event creation (QR only, cover only, both, none)
-**Step 5:** Backend restart + attempt_completion
-
-**Status:** READY FOR TESTING
+# TODO: Remove Settings page\n\n- [ ] Step 1: Delete frontend/src/pages/OrganizerSettings.jsx\n- [ ] Step 2: Edit frontend/src/components/OrganizerLayout.jsx (remove Account nav group and pageTitles entry)\n- [ ] Step 3: Edit frontend/src/App.js (remove import and route)\n- [ ] Step 4: Verify and complete

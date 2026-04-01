@@ -85,21 +85,75 @@ const STYLES = `
     100% { transform: scale(1); opacity: 1; }
   }
 
+  .nb-hamburger {
+    display: none;
+    background: none; border: none; cursor: pointer;
+    padding: 6px; border-radius: 8px;
+    transition: background .15s ease;
+  }
+  .nb-hamburger:hover { background: rgba(255,255,255,.06); }
+
+  /* Mobile menu overlay */
+  .nb-mobile-menu {
+    position: fixed; top: 64px; left: 0; right: 0; bottom: 0;
+    background: rgba(8,12,20,.97);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: 49;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow-y: auto;
+  }
+
+  .nb-mobile-link {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px;
+    font-size: 15px; font-weight: 600;
+    color: #9ca3af; text-decoration: none;
+    border-radius: 12px;
+    transition: background .12s ease, color .12s ease;
+    position: relative;
+  }
+  .nb-mobile-link:hover,
+  .nb-mobile-link.active {
+    background: rgba(99,102,241,.1);
+    color: #f0f4ff;
+  }
+  .nb-mobile-link.active {
+    border-left: 3px solid #6366f1;
+  }
+
+  .nb-mobile-badge {
+    min-width: 18px; height: 18px;
+    background: #6366f1; color: #fff;
+    font-size: 10px; font-weight: 800;
+    border-radius: 99px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0 5px; margin-left: auto;
+  }
+
   @media (max-width: 768px) {
     .nb-links { display: none !important; }
-    .nb-name { display: none !important; }
+    .nb-name  { display: none !important; }
+    .nb-hamburger { display: flex !important; align-items: center; justify-content: center; }
   }
 `
 
 function Navbar() {
   const { user, logout, isAuthenticated } = useAuth()
   const { totalUnread } = useChatContext()
-  const [showDropdown, setShowDropdown]   = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
   const dropdownRef = useRef(null)
   const location    = useLocation()
 
-  const handleLogout = () => { setShowDropdown(false); logout() }
+  const handleLogout = () => {
+    setShowDropdown(false)
+    setShowMobileMenu(false)
+    logout()
+  }
 
+  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target))
@@ -108,6 +162,11 @@ function Navbar() {
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [])
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setShowMobileMenu(false)
+  }, [location.pathname])
 
   const isActive = (path) => location.pathname === path
 
@@ -176,8 +235,6 @@ function Navbar() {
                 <Link to="/tickets" className={`nb-link${isActive("/tickets") ? " active" : ""}`}>
                   My Tickets
                 </Link>
-
-                {/* ── CHAT LINK WITH BADGE ── */}
                 <Link
                   to="/chat"
                   className={`nb-link${isActive("/chat") ? " active" : ""}`}
@@ -208,11 +265,10 @@ function Navbar() {
             <Link to="/login" className="nb-sign-in">Sign in</Link>
           )}
 
-          {/* Avatar + dropdown */}
+          {/* Avatar + dropdown (desktop) */}
           {isAuthenticated && (
             <div style={{ position: "relative" }} ref={dropdownRef}>
               <button className="nb-avatar-btn" onClick={() => setShowDropdown(!showDropdown)}>
-                {/* Avatar circle */}
                 <div style={{
                   width: 34, height: 34, borderRadius: "50%",
                   background: "#6366f1",
@@ -228,16 +284,12 @@ function Navbar() {
                     </span>
                   )}
                 </div>
-
-                {/* Name */}
                 <span className="nb-name" style={{
                   fontSize: 13, fontWeight: 600, color: "#d1d5db",
                   maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>
                   {user?.name}
                 </span>
-
-                {/* Chevron */}
                 <svg
                   width="12" height="12" fill="none" stroke="#6b7280" strokeWidth="2.5" viewBox="0 0 24 24"
                   style={{ transition: "transform .2s ease", transform: showDropdown ? "rotate(180deg)" : "rotate(0)" }}
@@ -246,7 +298,6 @@ function Navbar() {
                 </svg>
               </button>
 
-              {/* ── DROPDOWN ── */}
               <AnimatePresence>
                 {showDropdown && (
                   <motion.div
@@ -264,7 +315,6 @@ function Navbar() {
                       overflow: "hidden", zIndex: 100,
                     }}
                   >
-                    {/* User header */}
                     <div style={{
                       padding: "14px 16px",
                       borderBottom: "1px solid rgba(255,255,255,.06)",
@@ -293,8 +343,6 @@ function Navbar() {
                         </p>
                       </div>
                     </div>
-
-                    {/* Menu items */}
                     <div style={{ padding: "6px 0" }}>
                       <Link to="/profile" className="nb-dropdown-item" onClick={() => setShowDropdown(false)}>
                         <div className="nb-icon-box">
@@ -304,7 +352,6 @@ function Navbar() {
                         </div>
                         My Profile
                       </Link>
-
                       <Link to="/dashboard" className="nb-dropdown-item" onClick={() => setShowDropdown(false)}>
                         <div className="nb-icon-box">
                           <svg width="14" height="14" fill="none" stroke="#9ca3af" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -316,7 +363,6 @@ function Navbar() {
                         </div>
                         Dashboard
                       </Link>
-
                       <Link to="/tickets" className="nb-dropdown-item" onClick={() => setShowDropdown(false)}>
                         <div className="nb-icon-box">
                           <svg width="14" height="14" fill="none" stroke="#9ca3af" strokeWidth="1.8" viewBox="0 0 24 24">
@@ -326,8 +372,6 @@ function Navbar() {
                         My Tickets
                       </Link>
                     </div>
-
-                    {/* Logout */}
                     <div style={{ borderTop: "1px solid rgba(255,255,255,.06)", padding: "6px 0" }}>
                       <button onClick={handleLogout} className="nb-dropdown-item danger">
                         <div className="nb-icon-box" style={{ background: "rgba(239,68,68,.08)" }}>
@@ -343,8 +387,126 @@ function Navbar() {
               </AnimatePresence>
             </div>
           )}
+
+          {/* ── HAMBURGER (mobile only) ── */}
+          <button
+            className="nb-hamburger"
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            aria-label="Toggle menu"
+          >
+            <svg width="22" height="22" fill="none" stroke="#9ca3af" strokeWidth="2" viewBox="0 0 24 24">
+              {showMobileMenu ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+
         </div>
       </motion.nav>
+
+      {/* ── MOBILE MENU ── */}
+      <AnimatePresence>
+        {showMobileMenu && (
+          <motion.div
+            className="nb-mobile-menu"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: [.22,1,.36,1] }}
+          >
+            {/* User info at top if logged in */}
+            {isAuthenticated && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "12px 16px",
+                background: "rgba(99,102,241,.08)",
+                border: "1px solid rgba(99,102,241,.15)",
+                borderRadius: 12, marginBottom: 8,
+              }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: "50%",
+                  background: "#6366f1", border: "2px solid rgba(99,102,241,.5)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  overflow: "hidden", flexShrink: 0,
+                }}>
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    <span style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>
+                      {getInitials(user?.name, user?.email)}
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: "#f0f4ff", margin: 0 }}>{user?.name}</p>
+                  <p style={{ fontSize: 11, color: "#4b5563", margin: 0 }}>{user?.email}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Nav links */}
+            <Link to="/explore" className={`nb-mobile-link${isActive("/explore") ? " active" : ""}`}>
+              🔍 Explore
+            </Link>
+
+            {isAuthenticated && (
+              <>
+                <Link to="/dashboard" className={`nb-mobile-link${isActive("/dashboard") ? " active" : ""}`}>
+                  📊 Dashboard
+                </Link>
+                <Link to="/tickets" className={`nb-mobile-link${isActive("/tickets") ? " active" : ""}`}>
+                  🎟️ My Tickets
+                </Link>
+                <Link to="/chat" className={`nb-mobile-link${isActive("/chat") ? " active" : ""}`}>
+                  💬 Chat
+                  {totalUnread > 0 && (
+                    <span className="nb-mobile-badge">
+                      {totalUnread > 99 ? "99+" : totalUnread}
+                    </span>
+                  )}
+                </Link>
+                <Link to="/profile" className={`nb-mobile-link${isActive("/profile") ? " active" : ""}`}>
+                  👤 My Profile
+                </Link>
+
+                {/* Divider */}
+                <div style={{ height: 1, background: "rgba(255,255,255,.06)", margin: "8px 0" }} />
+
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "14px 16px",
+                    fontSize: 15, fontWeight: 600,
+                    color: "#f87171", background: "none", border: "none",
+                    borderRadius: 12, cursor: "pointer", width: "100%", textAlign: "left",
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    transition: "background .12s ease",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,.08)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "none"}
+                >
+                  🚪 Logout
+                </button>
+              </>
+            )}
+
+            {!isAuthenticated && (
+              <Link to="/login" style={{
+                display: "block", textAlign: "center",
+                padding: "14px", marginTop: 8,
+                background: "#6366f1", color: "#fff",
+                borderRadius: 12, textDecoration: "none",
+                fontSize: 15, fontWeight: 700,
+              }}>
+                Sign in
+              </Link>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

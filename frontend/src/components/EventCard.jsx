@@ -25,7 +25,7 @@ const getInitialColor = (title = "") => {
   return colors[title.charCodeAt(0) % colors.length]
 }
 
-const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onToggleFavorite, attendees }) => {
+const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onToggleFavorite, attendees, isRegistered }) => {
   const navigate = useNavigate();
   const [showReminder, setShowReminder]   = useState(false);
   const [reminderSet, setReminderSet]     = useState(false);
@@ -310,30 +310,44 @@ const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onTo
             </AnimatePresence>
           </div>
 
-          {/* Register — good medium size, right side */}
+          {/* ── REGISTER BUTTON — green when already registered ── */}
           <motion.button
             whileTap={{ scale: .97 }}
             onClick={e => { e.stopPropagation(); onRegister(eventId); }}
-            disabled={!isAuthenticated || isFull}
+            disabled={!isAuthenticated || isFull || isRegistered}
             style={{
               flex: 2,
               padding: "8px 10px",
-              background: isFull ? "rgba(255,255,255,.04)" : "#6366f1",
-              border: isFull ? "1px solid rgba(255,255,255,.07)" : "1px solid transparent",
+              background: isRegistered
+                ? "rgba(67,232,176,.15)"
+                : isFull
+                ? "rgba(255,255,255,.04)"
+                : "#6366f1",
+              border: isRegistered
+                ? "1px solid rgba(67,232,176,.3)"
+                : isFull
+                ? "1px solid rgba(255,255,255,.07)"
+                : "1px solid transparent",
               borderRadius: 10,
-              color: isFull ? "#374151" : "#fff",
+              color: isRegistered ? "#43e8b0" : isFull ? "#374151" : "#fff",
               fontSize: 13, fontWeight: 700,
-              cursor: isFull || !isAuthenticated ? "not-allowed" : "pointer",
-              opacity: !isAuthenticated && !isFull ? .55 : 1,
+              cursor: isFull || !isAuthenticated || isRegistered ? "not-allowed" : "pointer",
+              opacity: !isAuthenticated && !isFull && !isRegistered ? .55 : 1,
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               boxShadow: "none",
               transition: "background .15s ease, box-shadow .15s ease",
               textAlign: "center",
             }}
-
           >
-            {isFull ? "Full" : isAuthenticated ? "Register" : "Login to Register"}
+            {isRegistered
+              ? "✓ Registered"
+              : isFull
+              ? "Full"
+              : isAuthenticated
+              ? "Register"
+              : "Login to Register"}
           </motion.button>
+
         </div>
 
       </div>
@@ -349,6 +363,7 @@ EventCard.propTypes = {
   isFavorite:       PropTypes.bool,
   onToggleFavorite: PropTypes.func,
   attendees:        PropTypes.array,
+  isRegistered:     PropTypes.bool, // NEW
 };
 
 export default EventCard;

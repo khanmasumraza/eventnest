@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import api from "../utils/api";
 import { useAuth } from "../context/AuthContext";
-import EventCard from "./EventCard";
 
 
 
@@ -82,13 +81,24 @@ const getAccentColor = (title = "") => {
   return colors[title.charCodeAt(0) % colors.length]
 }
 
+/* ── resolve image URL from multiple possible field names ── */
+const getEventImageUrl = (event) => {
+  // Backend saves as imageUrl (and bannerUrl as fallback) — confirmed from event controller
+  const raw = event.imageUrl || event.bannerUrl || event.coverImage || event.image || null;
+  if (!raw) return null;
+  // If already an absolute URL (Cloudinary, S3, https) return as-is
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  // Relative path like /uploads/paymentQR/filename.jpg — prepend backend origin
+  const base = (process.env.REACT_APP_API_URL || "http://localhost:5000/api").replace("/api", "");
+  return `${base}${raw.startsWith("/") ? "" : "/"}${raw}`;
+};
+
 function EventDetails() {
   const { id }       = useParams();
   const navigate     = useNavigate();
   const { user }     = useAuth();
 
   const [event, setEvent]                         = useState(null);
-  const [similarEvents, setSimilarEvents]         = useState([]);
   const [loading, setLoading]                     = useState(true);
   const [error, setError]                         = useState(null);
   const [registrationStatus, setRegistrationStatus] = useState({ registered: false, ticketId: null });
@@ -104,7 +114,7 @@ function EventDetails() {
       return;
     }
     try {
-  const eventRes  = await api.get(`/events/${id}`);
+      const eventRes  = await api.get(`/events/${id}`);
       const eventData = eventRes.data?.event || eventRes.data;
       setEvent(eventData);
 
@@ -115,7 +125,7 @@ function EventDetails() {
 
       if (user) {
         try {
-        const statusRes = await api.get(`/registrations/${id}/registration-status`);
+          const statusRes = await api.get(`/registrations/${id}/registration-status`);
           setRegistrationStatus({
             registered: statusRes.data?.registered || false,
             ticketId:   statusRes.data?.ticketId   || null,
@@ -123,14 +133,6 @@ function EventDetails() {
         } catch { console.log("Not registered yet"); }
       }
 
-      const allEvents   = await api.get(`/events`);
-      const eventsArray = Array.isArray(allEvents.data)
-        ? allEvents.data
-        : allEvents.data?.events || [];
-
-      setSimilarEvents(
-        eventsArray.filter(e => e._id !== id && e.category === eventData.category).slice(0, 3)
-      );
     } catch (err) {
       console.error("Error loading event:", err);
       setError("Event not found");
@@ -210,12 +212,13 @@ function EventDetails() {
     );
   }
 
-  const eventDate    = new Date(event.date);
-  const isEventFull  = seatsLeft <= 0;
-  const accentColor  = getAccentColor(event.title || "")
-  const initials     = getInitials(event.title || "")
-  const showFallback = imgError || !event.image
-  const progressColor = getProgressColor()
+  const eventDate     = new Date(event.date);
+  const isEventFull   = seatsLeft <= 0;
+  const accentColor   = getAccentColor(event.title || "");
+  const initials      = getInitials(event.title || "");
+  const imageUrl      = getEventImageUrl(event);          // ← resolves coverImage / image / banner
+  const showFallback  = imgError || !imageUrl;            // ← fixed: was !event.image
+  const progressColor = getProgressColor();
 
   const dateStr = eventDate.toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
@@ -232,7 +235,7 @@ function EventDetails() {
           {/* Image or initials fallback */}
           {!showFallback ? (
             <img
-              src={event.image}
+              src={imageUrl}
               alt={event.title}
               onError={() => setImgError(true)}
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -263,7 +266,7 @@ function EventDetails() {
             </div>
           )}
 
-          {/* Gradient overlay — dark to transparent, NOT purple */}
+          {/* Gradient overlay */}
           <div style={{
             position: "absolute", inset: 0,
             background: "linear-gradient(to top, #080c14 0%, rgba(8,12,20,.75) 40%, rgba(8,12,20,.2) 100%)",
@@ -274,7 +277,6 @@ function EventDetails() {
             position: "absolute", bottom: 0, left: 0, right: 0,
             maxWidth: 1100, margin: "0 auto", padding: "0 28px 36px",
           }}>
-            {/* Category badge */}
             <div style={{ marginBottom: 14 }}>
               <span style={{
                 fontSize: 11, fontWeight: 700, letterSpacing: ".08em",
@@ -300,23 +302,12 @@ function EventDetails() {
               {event.title}
             </h1>
 
-            {/* Info pills */}
             <div className="ed-pills ed-fade-2" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <span className="ed-info-pill">
-                <span>📅</span>
-                {dateStr}
-              </span>
-              <span className="ed-info-pill">
-                <span>🕐</span>
-                {event.time || "10:00 AM"}
-              </span>
-              <span className="ed-info-pill">
-                <span>📍</span>
-                {event.venue ? `${event.venue}, ` : ""}{event.city || ""}
-              </span>
+              <span className="ed-info-pill"><span>📅</span>{dateStr}</span>
+              <span className="ed-info-pill"><span>🕐</span>{event.time || event.startTime || "TBD"}</span>
+              <span className="ed-info-pill"><span>📍</span>{event.venue ? `${event.venue}, ` : ""}{event.city || ""}</span>
             </div>
 
-            {/* Attending */}
             {(event.registered || 0) > 0 && (
               <div className="ed-fade-3" style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{
@@ -343,44 +334,31 @@ function EventDetails() {
             {/* ── LEFT ── */}
             <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
 
-              {/* About */}
               <div className="ed-fade-2">
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
                   <div style={{ width: 3, height: 22, borderRadius: 99, background: accentColor, boxShadow: `0 0 8px ${accentColor}60` }} />
-                  <h2 style={{ fontSize: 18, fontWeight: 800, color: "#f0f4ff", margin: 0 }}>
-                    About Event
-                  </h2>
+                  <h2 style={{ fontSize: 18, fontWeight: 800, color: "#f0f4ff", margin: 0 }}>About Event</h2>
                 </div>
-                <p style={{
-                  fontSize: 14, color: "#6b7280", lineHeight: 1.8,
-                  fontWeight: 500, margin: 0,
-                }}>
+                <p style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.8, fontWeight: 500, margin: 0 }}>
                   {event.description || "No description available."}
                 </p>
               </div>
 
-              {/* Event details row */}
-              <div className="ed-fade-3" style={{
-                display: "grid", gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-              }}>
+              <div className="ed-fade-3" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 {[
-                  { icon: "📅", label: "Date", value: eventDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) },
-                  { icon: "🕐", label: "Time", value: event.time || "10:00 AM" },
+                  { icon: "📅", label: "Date",  value: eventDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) },
+                  { icon: "🕐", label: "Time",  value: event.time || event.startTime || "TBD" },
                   { icon: "📍", label: "Venue", value: event.venue || "TBD" },
-                  { icon: "🏙", label: "City", value: event.city || "TBD" },
+                  { icon: "🏙",  label: "City",  value: event.city  || "TBD" },
                 ].map(item => (
                   <div key={item.label} style={{
-                    background: "#0f1623",
-                    border: "1px solid rgba(255,255,255,.07)",
-                    borderRadius: 14,
-                    padding: "16px 18px",
+                    background: "#0f1623", border: "1px solid rgba(255,255,255,.07)",
+                    borderRadius: 14, padding: "16px 18px",
                     display: "flex", alignItems: "center", gap: 12,
                   }}>
                     <div style={{
                       width: 36, height: 36, borderRadius: 10,
-                      background: `${accentColor}10`,
-                      border: `1px solid ${accentColor}20`,
+                      background: `${accentColor}10`, border: `1px solid ${accentColor}20`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       fontSize: 16, flexShrink: 0,
                     }}>
@@ -390,9 +368,7 @@ function EventDetails() {
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", color: "#374151", textTransform: "uppercase", marginBottom: 3 }}>
                         {item.label}
                       </div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#d1d5db" }}>
-                        {item.value}
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#d1d5db" }}>{item.value}</div>
                     </div>
                   </div>
                 ))}
@@ -400,24 +376,15 @@ function EventDetails() {
 
             </div>
 
-
-
-
             {/* ── RIGHT SIDEBAR ── */}
             <div className="ed-sidebar ed-fade-2">
               <div style={{
-                background: "#0f1623",
-                border: "1px solid rgba(255,255,255,.08)",
-                borderRadius: 20,
-                overflow: "hidden",
+                background: "#0f1623", border: "1px solid rgba(255,255,255,.08)",
+                borderRadius: 20, overflow: "hidden",
                 boxShadow: "0 24px 48px rgba(0,0,0,.4)",
               }}>
 
-                {/* Price header */}
-                <div style={{
-                  padding: "22px 22px 18px",
-                  borderBottom: "1px solid rgba(255,255,255,.06)",
-                }}>
+                <div style={{ padding: "22px 22px 18px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
                   <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".09em", color: "#374151", textTransform: "uppercase", margin: "0 0 6px" }}>
                     Event Price
                   </p>
@@ -431,7 +398,6 @@ function EventDetails() {
                   </div>
                 </div>
 
-                {/* Seats */}
                 <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                     <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 500 }}>
@@ -442,96 +408,64 @@ function EventDetails() {
                     </span>
                   </div>
                   <div style={{ height: 5, background: "rgba(255,255,255,.06)", borderRadius: 99, overflow: "hidden" }}>
-                    <div
-                      className="ed-progress-bar"
-                      style={{
-                        width: `${progressPercentage}%`,
-                        height: "100%",
-                        background: progressColor,
-                        boxShadow: `0 0 8px ${progressColor}60`,
-                      }}
-                    />
+                    <div className="ed-progress-bar" style={{
+                      width: `${progressPercentage}%`, height: "100%",
+                      background: progressColor, boxShadow: `0 0 8px ${progressColor}60`,
+                    }} />
                   </div>
                   <p style={{ fontSize: 11, color: "#374151", margin: "6px 0 0", fontWeight: 600 }}>
                     {isEventFull ? "No spots remaining" : `${seatsLeft} spots remaining`}
                   </p>
                 </div>
 
-                {/* CTA */}
                 <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
                   {registrationStatus.registered ? (
-                    <button
-                      onClick={handleViewTicket}
-                      className="ed-cta-btn"
-                      style={{
-                        width: "100%", padding: "14px",
-                        background: "#43e8b0",
-                        border: "none", borderRadius: 13,
-                        color: "#080c14", fontSize: 14, fontWeight: 800,
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        boxShadow: "0 4px 20px rgba(67,232,176,.3)",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      }}
-                    >
+                    <button onClick={handleViewTicket} className="ed-cta-btn" style={{
+                      width: "100%", padding: "14px", background: "#43e8b0",
+                      border: "none", borderRadius: 13, color: "#080c14",
+                      fontSize: 14, fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      boxShadow: "0 4px 20px rgba(67,232,176,.3)",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}>
                       🎫 View My Ticket
                     </button>
                   ) : isEventFull ? (
                     <button style={{
-                      width: "100%", padding: "14px",
-                      background: "rgba(255,255,255,.04)",
-                      border: "1px solid rgba(255,255,255,.08)",
-                      borderRadius: 13,
+                      width: "100%", padding: "14px", background: "rgba(255,255,255,.04)",
+                      border: "1px solid rgba(255,255,255,.08)", borderRadius: 13,
                       color: "#4b5563", fontSize: 14, fontWeight: 700,
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      cursor: "not-allowed",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif", cursor: "not-allowed",
                     }}>
                       Event Full
                     </button>
                   ) : (
-                    <button
-                      onClick={handleRegister}
-                      className="ed-cta-btn"
-                      style={{
-                        width: "100%", padding: "14px",
-                        background: "#6366f1",
-                        border: "none", borderRadius: 13,
-                        color: "#fff", fontSize: 14, fontWeight: 800,
-                        fontFamily: "'Plus Jakarta Sans', sans-serif",
-                        boxShadow: "0 4px 20px rgba(99,102,241,.35)",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      }}
-                    >
+                    <button onClick={handleRegister} className="ed-cta-btn" style={{
+                      width: "100%", padding: "14px", background: "#6366f1",
+                      border: "none", borderRadius: 13, color: "#fff",
+                      fontSize: 14, fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      boxShadow: "0 4px 20px rgba(99,102,241,.35)",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}>
                       Register Now →
                     </button>
                   )}
                 </div>
 
-                {/* Organizer */}
                 <div style={{
-                  padding: "14px 22px",
-                  borderBottom: "1px solid rgba(255,255,255,.06)",
+                  padding: "14px 22px", borderBottom: "1px solid rgba(255,255,255,.06)",
                   display: "flex", alignItems: "center", gap: 10,
                 }}>
                   <div style={{
                     width: 32, height: 32, borderRadius: 9,
-                    background: "rgba(99,102,241,.12)",
-                    border: "1px solid rgba(99,102,241,.2)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 15,
-                  }}>
-                    🎪
-                  </div>
+                    background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15,
+                  }}>🎪</div>
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", color: "#374151", textTransform: "uppercase" }}>
-                      Organizer
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#9ca3af" }}>
-                      EventNest
-                    </div>
+                    <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", color: "#374151", textTransform: "uppercase" }}>Organizer</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#9ca3af" }}>EventNest</div>
                   </div>
                 </div>
 
-                {/* Share */}
                 <div style={{ padding: "16px 22px" }}>
                   <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", color: "#374151", textTransform: "uppercase", margin: "0 0 12px" }}>
                     Share this event
@@ -543,23 +477,14 @@ function EventDetails() {
                       { key: "facebook", icon: "👥", label: "Facebook" },
                       { key: "copy",     icon: "🔗", label: copyLabel  },
                     ].map(s => (
-                      <button
-                        key={s.key}
-                        onClick={() => handleShare(s.key)}
-                        className="ed-share-btn"
-                        style={{
-                          padding: "9px 10px",
-                          background: "rgba(255,255,255,.03)",
-                          border: "1px solid rgba(255,255,255,.07)",
-                          borderRadius: 10,
-                          color: "#6b7280", fontSize: 12, fontWeight: 600,
-                          fontFamily: "'Plus Jakarta Sans', sans-serif",
-                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span>{s.icon}</span>
-                        <span>{s.label}</span>
+                      <button key={s.key} onClick={() => handleShare(s.key)} className="ed-share-btn" style={{
+                        padding: "9px 10px", background: "rgba(255,255,255,.03)",
+                        border: "1px solid rgba(255,255,255,.07)", borderRadius: 10,
+                        color: "#6b7280", fontSize: 12, fontWeight: 600,
+                        fontFamily: "'Plus Jakarta Sans', sans-serif",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer",
+                      }}>
+                        <span>{s.icon}</span><span>{s.label}</span>
                       </button>
                     ))}
                   </div>
@@ -570,29 +495,6 @@ function EventDetails() {
 
           </div>
 
-          {/* ── SIMILAR EVENTS ── */}
-          {similarEvents.length > 0 && (
-            <div style={{ marginTop: 60, paddingTop: 40, borderTop: "1px solid rgba(255,255,255,.06)" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
-                <div style={{ width: 3, height: 22, borderRadius: 99, background: "#6366f1", boxShadow: "0 0 8px rgba(99,102,241,.6)" }} />
-                <h2 style={{ fontSize: 18, fontWeight: 800, color: "#f0f4ff", margin: 0 }}>
-                  Similar Events
-                </h2>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
-                {similarEvents.map((ev, i) => (
-                  <EventCard
-                    key={ev._id}
-                    event={ev}
-                    index={i}
-                    isAuthenticated={!!user}
-                    onRegister={() => {}}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-          
 
         </div>
       </div>

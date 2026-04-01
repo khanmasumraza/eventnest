@@ -87,13 +87,14 @@ function Explore() {
   const { user }   = useAuth();
   const navigate   = useNavigate();
 
-  const [events, setEvents]               = useState([]);
-  const [filteredEvents, setFilteredEvents] = useState([]);
-  const [search, setSearch]               = useState("");
-  const [category, setCategory]           = useState("All");
-  const [city, setCity]                   = useState("All");
-  const [cities, setCities]               = useState(["All"]);
-  const [favorites, setFavorites]         = useState([]);
+  const [events, setEvents]                   = useState([]);
+  const [filteredEvents, setFilteredEvents]   = useState([]);
+  const [search, setSearch]                   = useState("");
+  const [category, setCategory]               = useState("All");
+  const [city, setCity]                       = useState("All");
+  const [cities, setCities]                   = useState(["All"]);
+  const [favorites, setFavorites]             = useState([]);
+  const [registeredEvents, setRegisteredEvents] = useState([]); // NEW
 
   useEffect(() => {
     if (!user) return
@@ -110,7 +111,25 @@ function Explore() {
         console.log('Could not load favorites:', err)
       }
     }
+
+    const loadRegistrations = async () => {
+      try {
+        const token = localStorage.getItem('token')
+        const res = await api.get('/registrations/my-tickets', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        // res.data is array of tickets, each has { event: { _id, ... } }
+        const ids = res.data
+          .filter(t => t.event && t.event._id)
+          .map(t => t.event._id)
+        setRegisteredEvents(ids)
+      } catch (err) {
+        console.log('Could not load registrations:', err)
+      }
+    }
+
     loadFavorites()
+    loadRegistrations()
   }, [user])
 
   useEffect(() => {
@@ -292,6 +311,7 @@ function Explore() {
                   onRegister={id => navigate(`/event/${id}`)}
                   isFavorite={favorites.includes(event._id)}
                   onToggleFavorite={handleToggleFavorite}
+                  isRegistered={registeredEvents.includes(event._id)} // NEW
                 />
               ))}
             </motion.div>
