@@ -25,7 +25,6 @@ function OrganizerStart() {
   const { user, login } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  const [step, setStep] = useState(1)
 
   const [formData, setFormData] = useState({
     organizerName: user?.name || "",
@@ -60,10 +59,14 @@ function OrganizerStart() {
         organizationName: formData.organizationName,
         category: formData.category,
       })
-      const profileRes = await api.get("/auth/profile")
-      console.log("👤 Updated profile role:", profileRes.data.role)
+
+      // Refresh user context with updated role
       const currentToken = localStorage.getItem("token")
       await login(currentToken)
+
+      // ✅ Always navigate explicitly — don't rely on useEffect race condition
+      navigate("/organiser/dashboard", { replace: true })
+
     } catch (err) {
       console.error("Activation error:", err.response || err)
       if (err.response?.data?.message?.toLowerCase().includes("already")) {
@@ -251,7 +254,8 @@ function OrganizerStart() {
                   width: "100%", height: "44px", borderRadius: "10px",
                   background: loading || !formData.agreedToGuidelines ? "#1f2937" : "#6366f1",
                   color: loading || !formData.agreedToGuidelines ? "#4b5563" : "white",
-                  border: "none", fontWeight: 600, fontSize: "14px", cursor: loading || !formData.agreedToGuidelines ? "not-allowed" : "pointer",
+                  border: "none", fontWeight: 600, fontSize: "14px",
+                  cursor: loading || !formData.agreedToGuidelines ? "not-allowed" : "pointer",
                   transition: "all 0.15s",
                 }}
               >
