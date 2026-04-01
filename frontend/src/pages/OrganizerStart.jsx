@@ -34,7 +34,9 @@ function OrganizerStart() {
   })
 
   useEffect(() => {
+    console.log("👤 user role on mount/update:", user?.role)
     if (user?.role === "organizer") {
+      console.log("✅ Already organizer → redirecting")
       navigate("/organiser/dashboard", { replace: true })
     }
   }, [user, navigate])
@@ -52,24 +54,34 @@ function OrganizerStart() {
     if (!formData.organizerName.trim()) { setError("Organizer name is required"); return }
     if (!formData.category) { setError("Please select a category"); return }
     if (!formData.agreedToGuidelines) { setError("You must agree to the guidelines"); return }
+
     setLoading(true)
+    console.log("🚀 Submitting become-organizer with:", formData)
+
     try {
-      await api.put("/auth/become-organizer", {
+      const putRes = await api.put("/auth/become-organizer", {
         organizerName: formData.organizerName,
         organizationName: formData.organizationName,
         category: formData.category,
       })
+      console.log("✅ become-organizer API response:", putRes.status, putRes.data)
 
-      // Refresh user context with updated role
       const currentToken = localStorage.getItem("token")
-      await login(currentToken)
+      console.log("🔑 Token found:", !!currentToken)
 
-      // ✅ Always navigate explicitly — don't rely on useEffect race condition
+      console.log("🔄 Calling login() to refresh user...")
+      await login(currentToken)
+      console.log("✅ login() done — navigating to organiser dashboard")
+
       navigate("/organiser/dashboard", { replace: true })
 
     } catch (err) {
-      console.error("Activation error:", err.response || err)
+      console.error("❌ become-organizer error:", err)
+      console.error("❌ response status:", err.response?.status)
+      console.error("❌ response data:", err.response?.data)
+
       if (err.response?.data?.message?.toLowerCase().includes("already")) {
+        console.log("⚠️ Already organizer — refreshing and redirecting")
         const currentToken = localStorage.getItem("token")
         await login(currentToken)
         navigate("/organiser/dashboard", { replace: true })
