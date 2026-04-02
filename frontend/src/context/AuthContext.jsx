@@ -14,10 +14,9 @@ export const AuthProvider = ({ children }) => {
 
   const [token, setToken] = useState(localStorage.getItem("token"));
 
-  // Initialize auth ONCE from persisted token - NO API calls
+  // 🔥 INIT (load cached user)
   useEffect(() => {
     if (token) {
-      // Try cached user first
       const cachedUser = localStorage.getItem("user");
       if (cachedUser) {
         setUser(JSON.parse(cachedUser));
@@ -28,11 +27,11 @@ export const AuthProvider = ({ children }) => {
     setIsInitialized(true);
   }, []);
 
-  // Login function - SINGLE source of truth
+  // 🔥 LOGIN
   const login = async (token) => {
     localStorage.setItem("token", token);
     setToken(token);
-    
+
     try {
       const res = await api.get("/auth/profile");
       setUser(res.data);
@@ -47,7 +46,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout function - CLEAR everything ONCE
+  // 🔥 LOGOUT
   const logout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
@@ -57,8 +56,25 @@ export const AuthProvider = ({ children }) => {
     navigate("/login", { replace: true });
   };
 
-  if (loading) {
+  // 🔥 CRITICAL FIX (refresh user from backend)
+  const checkAuth = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
 
+      const res = await api.get("/auth/profile");
+
+      if (res.data) {
+        setUser(res.data);
+        localStorage.setItem("user", JSON.stringify(res.data));
+        setIsAuthenticated(true);
+      }
+    } catch (err) {
+      console.error("checkAuth failed:", err);
+    }
+  };
+
+  if (loading) {
     return (
       <div
         style={{
@@ -72,24 +88,6 @@ export const AuthProvider = ({ children }) => {
         Loading...
       </div>
     );
-
-  }
-
-  const checkAuth = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      if (!token) return
-      const res = await api.get('/auth/me')
-      if (res.data?.user) {
-        setUser(res.data.user)
-        localStorage.setItem("user", JSON.stringify(res.data.user))
-      } else if (res.data) {
-        setUser(res.data)
-        localStorage.setItem("user", JSON.stringify(res.data))
-      }
-    } catch (err) {
-      console.error('checkAuth failed:', err)
-    }
   }
 
   return (
@@ -100,13 +98,12 @@ export const AuthProvider = ({ children }) => {
         isInitialized,
         login,
         logout,
-        checkAuth
+        checkAuth, // ✅ IMPORTANT
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-
 };
 
 export const useAuth = () => useContext(AuthContext);
