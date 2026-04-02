@@ -14,7 +14,7 @@ const navItems = [
   },
   {
     path: '/organiser/tickets',
-    label: 'Tickets',   // ✅ changed from 'Attendees'
+    label: 'Tickets',
     d: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
   },
   {
@@ -33,8 +33,8 @@ const pageTitles = {
   '/organiser/dashboard': 'Dashboard',
   '/organiser/events':    'Events',
   '/organiser/create':    'Create Event',
-  '/organiser/attendees': 'Tickets',   // ✅
-  '/organiser/tickets':   'Tickets',   // ✅ changed from 'Attendees'
+  '/organiser/attendees': 'Tickets',
+  '/organiser/tickets':   'Tickets',
   '/organiser/analytics': 'Analytics',
   '/organiser/payouts':   'Payouts',
 };
@@ -186,7 +186,9 @@ function OrganizerLayout({ children }) {
       {/* MAIN */}
       <div className="organizer-main">
         <header className="organizer-header">
-          <div className="organizer-header-logo">
+
+          {/* ── MOBILE: clickable logo → homepage ── */}
+          <Link to="/" style={{ textDecoration: 'none' }} className="organizer-header-logo">
             <div style={{
               width: '24px', height: '24px',
               background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
@@ -196,7 +198,8 @@ function OrganizerLayout({ children }) {
               <span style={{ color: 'white', fontWeight: 700, fontSize: '9px' }}>EN</span>
             </div>
             <span style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '13px' }}>EventNest</span>
-          </div>
+          </Link>
+
           <span style={{ color: '#6b7280', fontSize: '13px', fontWeight: 500 }}>
             {pageTitle}
           </span>
