@@ -2,9 +2,7 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-
-const API_URL = "http://localhost:5000/api";
+import api from "../utils/api";
 
 const CATEGORY_COLORS = {
   Workshop:   { bg: "rgba(99,102,241,.12)",  border: "rgba(99,102,241,.25)",  text: "#a5b4fc" },
@@ -61,12 +59,7 @@ const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onTo
     e.stopPropagation();
     if (!isAuthenticated) { navigate("/login"); return; }
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(
-        `${API_URL}/events/${eventId}/reminder`,
-        { reminderTime },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post(`/events/${eventId}/reminder`, { reminderTime });
       setReminderSet(true);
       setReminderLabel(label);
       setShowReminder(false);
@@ -91,9 +84,6 @@ const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onTo
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
-      {/* top accent line */}
-
-
       <div style={{ padding: "16px 18px 18px" }}>
 
         {/* ── HEADER ── */}
@@ -310,7 +300,7 @@ const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onTo
             </AnimatePresence>
           </div>
 
-          {/* ── REGISTER BUTTON — green when already registered ── */}
+          {/* ── REGISTER BUTTON ── */}
           <motion.button
             whileTap={{ scale: .97 }}
             onClick={e => { e.stopPropagation(); onRegister(eventId); }}
@@ -349,7 +339,6 @@ const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onTo
           </motion.button>
 
         </div>
-
       </div>
     </motion.div>
   );
@@ -363,7 +352,7 @@ EventCard.propTypes = {
   isFavorite:       PropTypes.bool,
   onToggleFavorite: PropTypes.func,
   attendees:        PropTypes.array,
-  isRegistered:     PropTypes.bool, // NEW
+  isRegistered:     PropTypes.bool,
 };
 
 export default EventCard;
