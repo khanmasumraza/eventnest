@@ -70,10 +70,20 @@ function OrganizerStart() {
       console.log("🔑 Token found:", !!currentToken)
 
       console.log("🔄 Calling login() to refresh user...")
-      await login(currentToken)
-      console.log("✅ login() done — navigating to organiser dashboard")
+    
+   await login(currentToken)
 
-      navigate("/organiser/dashboard", { replace: true })
+setTimeout(() => {
+  const updatedUser = JSON.parse(localStorage.getItem("user"))
+  
+  if (updatedUser?.role === "organizer") {
+    navigate("/organizer/dashboard", { replace: true })
+  } else {
+    console.error("Role not updated yet")
+  }
+}, 100)
+
+    
 
     } catch (err) {
       console.error("❌ become-organizer error:", err)
