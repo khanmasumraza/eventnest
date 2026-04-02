@@ -300,6 +300,8 @@ const EventCard = ({ event, isAuthenticated, onRegister, index, isFavorite, onTo
             </AnimatePresence>
           </div>
 
+          console.log("hello")
+
           {/* ── REGISTER BUTTON ── */}
           <motion.button
             whileTap={{ scale: .97 }}
