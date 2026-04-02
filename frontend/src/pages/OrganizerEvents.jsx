@@ -64,8 +64,22 @@ function OrganizerEvents() {
     e.city?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const fmtCurrency = (n) => !n ? 'Free' :
-    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(n);
+  // ✅ FIXED: Show ticket price, not revenue (revenue = 0 when no registrations yet)
+  const fmtPrice = (price) => {
+    if (!price || price === 0) return 'Free';
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency', currency: 'INR', minimumFractionDigits: 0
+    }).format(price);
+  };
+
+  // ✅ Revenue = registrations × price (shown separately on mobile)
+  const fmtRevenue = (event) => {
+    const revenue = (event.registered || 0) * (event.price || 0);
+    if (revenue === 0) return '₹0';
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency', currency: 'INR', minimumFractionDigits: 0
+    }).format(revenue);
+  };
 
   const fmtDate = (d) =>
     new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -85,7 +99,7 @@ function OrganizerEvents() {
         {/* ── Toolbar ── */}
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
 
-          {/* Search — grows to fill available space */}
+          {/* Search */}
           <div className="relative flex-1 min-w-0">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-[14px] h-[14px] text-[#4B5563]"
@@ -116,12 +130,11 @@ function OrganizerEvents() {
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
             </svg>
-            {/* Full label on sm+, icon-only on mobile */}
             <span className="hidden xs:inline sm:inline">New event</span>
           </Link>
         </div>
 
-        {/* ── Data: table on md+, cards on mobile ── */}
+        {/* ── Data ── */}
         {filtered.length > 0 ? (
           <>
             {/* ── DESKTOP TABLE (md+) ── */}
@@ -129,7 +142,8 @@ function OrganizerEvents() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-white/[0.05]">
-                    {['Event', 'Date', 'Tickets', 'Revenue', 'Status', ''].map((h, i) => (
+                    {/* ✅ Changed "Revenue" → "Price" */}
+                    {['Event', 'Date', 'Tickets', 'Price', 'Status', ''].map((h, i) => (
                       <th
                         key={i}
                         className={`py-3 px-5 text-[11px] font-semibold text-[#4B5563] uppercase tracking-[0.06em] ${h === '' ? 'text-right' : 'text-left'}`}
@@ -142,7 +156,6 @@ function OrganizerEvents() {
                 <tbody>
                   {filtered.map((event, i) => {
                     const status  = getStatus(event);
-                    const revenue = (event.registered || 0) * (event.price || 0);
                     const fillPct = Math.min(((event.registered || 0) / (event.capacity || 1)) * 100, 100);
                     const color   = categoryColor(event.category);
 
@@ -175,9 +188,11 @@ function OrganizerEvents() {
                             <div className="h-full rounded-full bg-[#6366F1]" style={{ width: `${fillPct}%` }} />
                           </div>
                         </td>
-                        {/* Revenue */}
-                        <td className="py-3.5 px-5 text-[13px] text-[#E5E7EB] font-medium">
-                          {fmtCurrency(revenue)}
+                        {/* ✅ FIXED: Show ticket price, not revenue */}
+                        <td className="py-3.5 px-5 text-[13px] font-medium">
+                          <span className={event.price > 0 ? 'text-[#E5E7EB]' : 'text-[#22C55E]'}>
+                            {fmtPrice(event.price)}
+                          </span>
                         </td>
                         {/* Status */}
                         <td className="py-3.5 px-5">
@@ -213,7 +228,6 @@ function OrganizerEvents() {
             <div className="flex flex-col gap-2.5 md:hidden">
               {filtered.map((event) => {
                 const status  = getStatus(event);
-                const revenue = (event.registered || 0) * (event.price || 0);
                 const fillPct = Math.min(((event.registered || 0) / (event.capacity || 1)) * 100, 100);
                 const color   = categoryColor(event.category);
 
@@ -222,7 +236,7 @@ function OrganizerEvents() {
                     key={event._id}
                     className="bg-[#0d1220] border border-white/[0.07] rounded-xl px-4 py-3.5 flex flex-col gap-3"
                   >
-                    {/* Row 1: category icon + title + status badge */}
+                    {/* Row 1: icon + title + status */}
                     <div className="flex items-center gap-3">
                       <div
                         className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-[13px] font-bold"
@@ -257,11 +271,14 @@ function OrganizerEvents() {
                       </div>
                     </div>
 
-                    {/* Row 3: revenue + view button */}
+                    {/* Row 3: price + view button */}
                     <div className="flex items-center justify-between pt-0.5 border-t border-white/[0.05]">
                       <div>
-                        <p className="text-[10px] text-[#4B5563] mb-0.5">Revenue</p>
-                        <p className="text-[14px] font-semibold text-[#E5E7EB]">{fmtCurrency(revenue)}</p>
+                        {/* ✅ FIXED: Show price per ticket, not revenue */}
+                        <p className="text-[10px] text-[#4B5563] mb-0.5">Price / ticket</p>
+                        <p className={`text-[14px] font-semibold ${event.price > 0 ? 'text-[#E5E7EB]' : 'text-[#22C55E]'}`}>
+                          {fmtPrice(event.price)}
+                        </p>
                       </div>
                       <a
                         href={`/event/${event._id}`}
@@ -283,7 +300,6 @@ function OrganizerEvents() {
           </>
 
         ) : (
-          /* ── Empty state ── */
           <div className="bg-[#0d1220] border border-white/[0.06] rounded-xl py-20 text-center px-6">
             <div className="w-10 h-10 bg-[#6366F1]/10 rounded-xl flex items-center justify-center mx-auto mb-3">
               <svg className="w-5 h-5 text-[#6366F1]" fill="none" stroke="currentColor" viewBox="0 0 24 24">

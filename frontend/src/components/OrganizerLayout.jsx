@@ -14,8 +14,8 @@ const navItems = [
   },
   {
     path: '/organiser/tickets',
-    label: 'Attendees',
-    d: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z',
+    label: 'Tickets',   // ✅ changed from 'Attendees'
+    d: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z',
   },
   {
     path: '/organiser/analytics',
@@ -33,8 +33,8 @@ const pageTitles = {
   '/organiser/dashboard': 'Dashboard',
   '/organiser/events':    'Events',
   '/organiser/create':    'Create Event',
-  '/organiser/attendees': 'Attendees',
-  '/organiser/tickets':   'Attendees',
+  '/organiser/attendees': 'Tickets',   // ✅
+  '/organiser/tickets':   'Tickets',   // ✅ changed from 'Attendees'
   '/organiser/analytics': 'Analytics',
   '/organiser/payouts':   'Payouts',
 };
@@ -53,7 +53,6 @@ function Icon({ d, size = 15 }) {
   );
 }
 
-/* Sidebar nav link — desktop only */
 function NavLink({ item, active }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -115,11 +114,8 @@ function OrganizerLayout({ children }) {
       fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     }}>
 
-      {/* ══════════════════════════════════
-          SIDEBAR — hidden on mobile, visible md+
-         ══════════════════════════════════ */}
+      {/* SIDEBAR */}
       <aside className="organizer-sidebar">
-        {/* Logo */}
         <div style={{
           padding: '18px 14px 16px',
           borderBottom: '1px solid rgba(255,255,255,0.05)',
@@ -139,7 +135,6 @@ function OrganizerLayout({ children }) {
           <span style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '14px' }}>EventNest</span>
         </div>
 
-        {/* Nav links */}
         <nav style={{
           flex: 1,
           padding: '10px 8px',
@@ -157,7 +152,6 @@ function OrganizerLayout({ children }) {
           ))}
         </nav>
 
-        {/* Homepage link */}
         <div style={{
           borderTop: '1px solid rgba(255,255,255,0.05)',
           padding: '12px 8px 16px',
@@ -189,14 +183,9 @@ function OrganizerLayout({ children }) {
         </div>
       </aside>
 
-      {/* ══════════════════════════════════
-          MAIN CONTENT AREA
-         ══════════════════════════════════ */}
+      {/* MAIN */}
       <div className="organizer-main">
-
-        {/* Top header */}
         <header className="organizer-header">
-          {/* Logo mark — mobile only */}
           <div className="organizer-header-logo">
             <div style={{
               width: '24px', height: '24px',
@@ -208,14 +197,11 @@ function OrganizerLayout({ children }) {
             </div>
             <span style={{ color: '#e5e7eb', fontWeight: 700, fontSize: '13px' }}>EventNest</span>
           </div>
-
-          {/* Page title — always visible */}
           <span style={{ color: '#6b7280', fontSize: '13px', fontWeight: 500 }}>
             {pageTitle}
           </span>
         </header>
 
-        {/* Page content */}
         <main
           className="organizer-content"
           style={{
@@ -228,9 +214,7 @@ function OrganizerLayout({ children }) {
         </main>
       </div>
 
-      {/* ══════════════════════════════════
-          BOTTOM NAV — mobile only (md hidden)
-         ══════════════════════════════════ */}
+      {/* BOTTOM NAV — mobile */}
       <nav className="organizer-bottom-nav">
         {navItems.map(item => {
           const active = location.pathname === item.path;
@@ -244,7 +228,6 @@ function OrganizerLayout({ children }) {
                 background: 'none',
               }}
             >
-              {/* Active indicator dot */}
               {active && (
                 <span style={{
                   position: 'absolute',
@@ -270,34 +253,28 @@ function OrganizerLayout({ children }) {
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
-
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 4px; }
 
-        /* ── SIDEBAR ── */
         .organizer-sidebar {
           width: 210px;
           background: #0a0f1c;
           border-right: 1px solid rgba(255,255,255,0.05);
-          display: none;          /* hidden on mobile */
+          display: none;
           flex-direction: column;
           position: fixed;
           height: 100%;
           z-index: 20;
         }
-
-        /* ── MAIN ── */
         .organizer-main {
           flex: 1;
-          margin-left: 0;        /* no sidebar offset on mobile */
+          margin-left: 0;
           display: flex;
           flex-direction: column;
           min-height: 100vh;
         }
-
-        /* ── HEADER ── */
         .organizer-header {
           height: 48px;
           background: #0a0f1c;
@@ -310,23 +287,17 @@ function OrganizerLayout({ children }) {
           top: 0;
           z-index: 10;
         }
-
-        /* Logo in header — mobile only */
         .organizer-header-logo {
           display: flex;
           align-items: center;
           gap: 7px;
         }
-
-        /* ── CONTENT ── */
         .organizer-content {
-          padding: 16px 16px 80px;   /* bottom padding clears the bottom nav */
+          padding: 16px 16px 80px;
           flex: 1;
         }
-
-        /* ── BOTTOM NAV ── */
         .organizer-bottom-nav {
-          display: flex;             /* visible on mobile */
+          display: flex;
           position: fixed;
           bottom: 0; left: 0; right: 0;
           background: #0a0f1c;
@@ -334,7 +305,6 @@ function OrganizerLayout({ children }) {
           z-index: 30;
           padding-bottom: env(safe-area-inset-bottom, 0px);
         }
-
         .organizer-bottom-nav-item {
           flex: 1;
           display: flex;
@@ -347,29 +317,17 @@ function OrganizerLayout({ children }) {
           position: relative;
           transition: color 0.15s;
         }
-
-        /* ── md+ (768px) — sidebar layout ── */
         @media (min-width: 768px) {
-          .organizer-sidebar {
-            display: flex;           /* show sidebar */
-          }
-          .organizer-main {
-            margin-left: 210px;      /* offset for sidebar */
-          }
+          .organizer-sidebar { display: flex; }
+          .organizer-main { margin-left: 210px; }
           .organizer-header {
             height: 44px;
             padding: 0 24px;
-            justify-content: flex-start;   /* title only, no logo needed */
+            justify-content: flex-start;
           }
-          .organizer-header-logo {
-            display: none;           /* sidebar has the logo, hide from header */
-          }
-          .organizer-content {
-            padding: 24px;           /* full desktop padding, no bottom offset */
-          }
-          .organizer-bottom-nav {
-            display: none;           /* hide bottom nav on desktop */
-          }
+          .organizer-header-logo { display: none; }
+          .organizer-content { padding: 24px; }
+          .organizer-bottom-nav { display: none; }
         }
       `}</style>
     </div>
