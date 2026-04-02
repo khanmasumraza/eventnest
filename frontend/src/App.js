@@ -14,13 +14,11 @@ import Checkout from './pages/Checkout'
 import Ticket from './pages/Ticket'
 import CheckIn from './pages/CheckIn'
 import PaymentRequired from './pages/PaymentRequired'
-import OrganizerStart from './pages/OrganizerStart'
 import OrganizerDashboard from './pages/OrganizerDashboard'
 import OrganizerEvents from './pages/OrganizerEvents'
 import OrganizerCreateEvent from './pages/OrganizerCreateEvent'
 import OrganizerAnalytics from './pages/OrganizerAnalytics'
 import OrganizerPayouts from './pages/OrganizerPayouts'
-
 import OrganizerTickets from './pages/OrganizerTickets'
 import ChatInbox from './pages/ChatInbox'
 import ChatBoxWrapper from './pages/ChatBoxWrapper'
@@ -29,14 +27,12 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { SocketProvider } from './context/SocketContext'
 import { ChatProvider } from './context/chatContext'
 
-// ─── Organiser shell (no global navbar) ────────────────────────────────────
 const OrganizerShell = () => (
   <div style={{ minHeight: '100vh', background: '#080c14' }}>
     <Outlet />
   </div>
 )
 
-// ─── Auth guard ─────────────────────────────────────────────────────────────
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isInitialized } = useAuth()
 
@@ -55,7 +51,6 @@ const ProtectedRoute = ({ children }) => {
   return children
 }
 
-// ─── App ────────────────────────────────────────────────────────────────────
 function AppContent() {
   return (
     <Routes>
@@ -78,6 +73,11 @@ function AppContent() {
       />
       <Route path="/auth/success" element={<AuthSuccess />} />
 
+      {/* ── FIX: catch all wrong organizer URL spellings ── */}
+      <Route path="/become-organizer" element={<Navigate to="/organiser/dashboard" replace />} />
+      <Route path="/become-organiser" element={<Navigate to="/organiser/dashboard" replace />} />
+      <Route path="/organizer/start" element={<Navigate to="/organiser/dashboard" replace />} />
+
       {/* ── ORGANISER (no global navbar) ── */}
       <Route element={<OrganizerShell />}>
         <Route
@@ -89,14 +89,6 @@ function AppContent() {
           element={<Navigate to="/organiser/dashboard" replace />}
         />
 
-        <Route
-          path="organiser/start"
-          element={
-            <ProtectedRoute>
-              <OrganizerStart />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="organiser/dashboard"
           element={
@@ -137,8 +129,6 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
-
-        {/* Attendees + Tickets → same component. /attendees redirects to /tickets */}
         <Route
           path="organiser/tickets"
           element={
@@ -151,8 +141,6 @@ function AppContent() {
           path="organiser/attendees"
           element={<Navigate to="/organiser/tickets" replace />}
         />
-
-        {/* Legacy / unused routes kept as redirects so nothing 404s */}
         <Route
           path="organiser/inbox"
           element={<Navigate to="/organiser/dashboard" replace />}
@@ -203,7 +191,6 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="chat"
           element={
@@ -214,7 +201,6 @@ function AppContent() {
         >
           <Route path=":userId" element={<ChatBoxWrapper />} />
         </Route>
-
         <Route
           path="admin"
           element={

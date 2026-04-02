@@ -3,253 +3,150 @@ const jwt = require('jsonwebtoken')
 const User = require('../models/User')
 
 /* ====================================================== */
-/* TOKEN GENERATOR */
+/* TOKEN GENERATOR                                        */
 /* ====================================================== */
 
 const generateToken = (user) => {
-  const secret =
-    process.env.JWT_SECRET || 'fallback_secret_change_in_production'
-
-  return jwt.sign({ id: user._id, role: user.role }, secret, {
-    expiresIn: '7d',
-  })
+  const secret = process.env.JWT_SECRET || 'fallback_secret_change_in_production'
+  return jwt.sign({ id: user._id, role: user.role }, secret, { expiresIn: '7d' })
 }
 
 /* ====================================================== */
-/* REGISTER USER */
+/* REGISTER                                               */
 /* ====================================================== */
 
 const register = async (req, res) => {
-  console.log(
-    '🔍 [REGISTER] Raw req.body:',
-    JSON.stringify({
-      ...req.body,
-      password: req.body.password?.substring(0, 2) + '...',
-    }),
-  )
-  console.log('🔍 [REGISTER] Raw password:', `'${req.body.password}'`)
-  console.log('🔍 [REGISTER] Raw length:', req.body.password?.length)
+  console.log('🔍 [REGISTER] req.body:', JSON.stringify({
+    ...req.body,
+    password: req.body.password?.substring(0, 2) + '...',
+  }))
   const rawPassword = req.body.password || ''
   const trimmedPassword = rawPassword.trim()
-  console.log('🔍 [REGISTER] Trimmed password:', `'${trimmedPassword}'`)
-  console.log('🔍 [REGISTER] Trimmed length:', trimmedPassword.length)
   const { name, email, role, phone, college, batch } = req.body
 
   try {
     const existingUser = await User.findOne({ email })
-
     if (existingUser) {
-      return res
-        .status(400)
-        .json({ message: 'Email already registered. Try logging in instead.' })
+      return res.status(400).json({ message: 'Email already registered. Try logging in instead.' })
     }
 
     const nameRegex = /^[A-Za-z0-9]+( [A-Za-z0-9]+)*$/
-
     if (!name || !nameRegex.test(name)) {
-      return res
-        .status(400)
-        .json({ message: 'Name must contain only letters and numbers.' })
+      return res.status(400).json({ message: 'Name must contain only letters and numbers.' })
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
     if (!email || !emailRegex.test(email)) {
       return res.status(400).json({ message: 'Invalid email format.' })
     }
 
-    const passwordRegex =
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
-
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
     if (!trimmedPassword || !passwordRegex.test(trimmedPassword)) {
       return res.status(400).json({
-        message:
-          'Password must contain uppercase, lowercase, number, and special character.',
+        message: 'Password must contain uppercase, lowercase, number, and special character.',
       })
     }
 
     const user = new User({
-      name,
-      email,
-      password: trimmedPassword, // Use trimmed password
+      name, email, password: trimmedPassword,
       role: role || 'user',
-      phone: phone || '',
-      college: college || '',
-      batch: batch || '',
+      phone: phone || '', college: college || '', batch: batch || '',
     })
 
     await user.save()
-
-    // Fetch saved user to log final stored hash
-    const savedUser = await User.findOne({ email }).select('password')
-    console.log(
-      '🔍 [REGISTER] FINAL stored hash:',
-      savedUser?.password?.substring(0, 20) + '...',
-    )
-
     const token = generateToken(user)
 
     res.status(201).json({
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        phone: user.phone,
-        college: user.college,
-        batch: user.batch,
-        profilePhoto: user.profilePhoto,
-        bio: user.bio,
+        id: user._id, name: user.name, email: user.email, role: user.role,
+        phone: user.phone, college: user.college, batch: user.batch,
+        profilePhoto: user.profilePhoto, bio: user.bio,
       },
     })
   } catch (error) {
-    console.error('Registration error:', error)
-
-    res.status(500).json({
-      message: 'Server error. Please try again later.',
-    })
+    console.error('❌ [REGISTER] Error:', error)
+    res.status(500).json({ message: 'Server error. Please try again later.' })
   }
 }
 
 /* ====================================================== */
-/* LOGIN USER (AUTO REGISTER) */
+/* LOGIN                                                  */
 /* ====================================================== */
 
 const login = async (req, res) => {
   try {
-    console.log(
-      '🔍 [LOGIN] Raw req.body:',
-      JSON.stringify({
-        ...req.body,
-        password: req.body.password?.substring(0, 2) + '...',
-      }),
-    )
-    console.log('🔍 [LOGIN] Raw entered email:', `'${req.body.email}'`)
-    const rawPassword = req.body.password || ''
-    console.log('🔍 [LOGIN] Raw password:', `'${rawPassword}'`)
-    console.log('🔍 [LOGIN] Raw length:', rawPassword.length)
     const { email, password } = req.body
     const cleanPassword = password.trim()
-    console.log('🔍 [LOGIN] Clean password (trimmed):', `'${cleanPassword}'`)
-    console.log('🔍 [LOGIN] Clean length:', cleanPassword.length)
-    console.log(
-      '🔍 [LOGIN] First char codes:',
-      Array.from(cleanPassword.slice(0, 5))
-        .map((c) => c.charCodeAt(0))
-        .join(', '),
-    )
 
     if (!email || !password) {
-      return res.status(400).json({
-        message: 'Email and password required',
-      })
+      return res.status(400).json({ message: 'Email and password required' })
     }
 
-    let user = await User.findOne({ email })
-    console.log(
-      '🔍 [LOGIN] Stored hash preview:',
-      user?.password ? `'${user.password.substring(0, 20)}...'` : 'NO USER',
-    )
-
+    const user = await User.findOne({ email })
     if (!user) {
-      return res.status(404).json({
-        message: 'User not found. Please register first.',
-      })
+      return res.status(404).json({ message: 'User not found. Please register first.' })
     }
 
     const isMatch = await bcrypt.compare(cleanPassword, user.password)
-    console.log(
-      '🔍 [LOGIN] bcrypt.compare(cleanPassword, hash) result:',
-      isMatch,
-    )
-    console.log('🔍 [LOGIN] DEBUG END')
-
     if (!isMatch) {
-      return res.status(401).json({
-        message: 'Incorrect password',
-      })
+      return res.status(401).json({ message: 'Incorrect password' })
     }
 
     user.lastLogin = new Date()
     await user.save()
 
     const token = generateToken(user)
+    console.log(`✅ [LOGIN] ${user.email} logged in | role: ${user.role}`)
 
     res.status(200).json({
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        phone: user.phone,
-        college: user.college,
-        batch: user.batch,
-        profilePhoto: user.profilePhoto,
-        bio: user.bio,
+        id: user._id, name: user.name, email: user.email, role: user.role,
+        phone: user.phone, college: user.college, batch: user.batch,
+        profilePhoto: user.profilePhoto, bio: user.bio,
       },
     })
   } catch (error) {
-    console.error('Login error:', error)
-
-    res.status(500).json({
-      message: 'Server error',
-    })
+    console.error('❌ [LOGIN] Error:', error)
+    res.status(500).json({ message: 'Server error' })
   }
 }
 
 /* ====================================================== */
-/* GET PROFILE */
+/* GET PROFILE                                            */
 /* ====================================================== */
 
 const getProfile = async (req, res) => {
-  console.log(
-    `📋 [${req.requestId || 'NO-ID'}] PROFILE API HIT - USER:`,
-    req.user?._id,
-  )
+  const reqId = req.requestId || Date.now()
+  console.log(`📋 [${reqId}] PROFILE HIT | user._id: ${req.user?._id}`)
+  console.log(`   └─ Authorization header: ${req.headers.authorization?.substring(0, 50)}`)
+
   try {
-    console.log(`👤 [${req.requestId || 'NO-ID'}] FETCHING PROFILE FROM DB`)
     const user = await User.findById(req.user._id).select('-password')
-    console.log(
-      `✅ [${req.requestId || 'NO-ID'}] PROFILE RESPONSE SENT:`,
-      user?._id || 'NULL',
-    )
 
     if (!user) {
-      return res.status(404).json({
-        message: 'User not found',
-      })
+      console.error(`❌ [${reqId}] User not found in DB`)
+      return res.status(404).json({ message: 'User not found' })
     }
 
+    console.log(`✅ [${reqId}] Profile returning: ${user.email} | role: "${user.role}"`)
     res.status(200).json(user)
   } catch (error) {
-    console.error('Get profile error:', error)
-
-    res.status(500).json({
-      message: 'Error fetching profile',
-    })
+    console.error(`❌ [${reqId}] getProfile error:`, error)
+    res.status(500).json({ message: 'Error fetching profile' })
   }
 }
 
 /* ====================================================== */
-/* UPDATE PROFILE */
+/* UPDATE PROFILE                                         */
 /* ====================================================== */
 
 const updateProfile = async (req, res) => {
-  console.log('🚀 PROFILE UPDATE START')
-  console.log('👉 USER:', req.user)
-  console.log('👉 BODY:', req.body)
   const { name, phone, college, batch, bio } = req.body
-
   try {
     const user = await User.findById(req.user._id)
-
-    if (!user) {
-      return res.status(404).json({
-        message: 'User not found',
-      })
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' })
 
     if (name !== undefined) user.name = name
     if (phone !== undefined) user.phone = phone
@@ -258,38 +155,26 @@ const updateProfile = async (req, res) => {
     if (bio !== undefined) user.bio = bio
 
     await user.save()
-
-    res.status(200).json({
-      message: 'Profile updated successfully',
-      user,
-    })
+    res.status(200).json({ message: 'Profile updated successfully', user })
   } catch (error) {
-    console.error('Update profile error:', error)
-
-    res.status(500).json({
-      message: 'Error updating profile',
-    })
+    console.error('❌ [UPDATE-PROFILE] Error:', error)
+    res.status(500).json({ message: 'Error updating profile' })
   }
 }
 
 /* ====================================================== */
-/* UPLOAD PROFILE PHOTO */
+/* UPLOAD PROFILE PHOTO                                   */
 /* ====================================================== */
 
 const uploadProfilePhoto = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({
-        message: 'No file uploaded',
-      })
-    }
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' })
 
     const profilePhotoUrl = `/uploads/${req.file.filename}`
-
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { profilePhoto: profilePhotoUrl },
-      { new: true },
+      { new: true }
     )
 
     res.status(200).json({
@@ -297,130 +182,119 @@ const uploadProfilePhoto = async (req, res) => {
       profilePhoto: user.profilePhoto,
     })
   } catch (error) {
-    console.error('Upload photo error:', error)
-
-    res.status(500).json({
-      message: 'Error uploading photo',
-    })
+    console.error('❌ [UPLOAD-PHOTO] Error:', error)
+    res.status(500).json({ message: 'Error uploading photo' })
   }
 }
 
 /* ====================================================== */
-/* CHANGE PASSWORD */
+/* CHANGE PASSWORD                                        */
 /* ====================================================== */
 
 const changePassword = async (req, res) => {
   const { currentPassword, newPassword } = req.body
-
   try {
     const user = await User.findById(req.user._id)
-
-    if (!user) {
-      return res.status(404).json({
-        message: 'User not found',
-      })
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' })
 
     const isMatch = await bcrypt.compare(currentPassword, user.password)
+    if (!isMatch) return res.status(400).json({ message: 'Current password is incorrect' })
 
-    if (!isMatch) {
-      return res.status(400).json({
-        message: 'Current password is incorrect',
-      })
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10)
-
-    user.password = hashedPassword
-
+    user.password = await bcrypt.hash(newPassword, 10)
     await user.save()
-
-    res.status(200).json({
-      message: 'Password changed successfully',
-    })
+    res.status(200).json({ message: 'Password changed successfully' })
   } catch (error) {
-    console.error('Change password error:', error)
-
-    res.status(500).json({
-      message: 'Error changing password',
-    })
+    console.error('❌ [CHANGE-PASSWORD] Error:', error)
+    res.status(500).json({ message: 'Error changing password' })
   }
 }
 
 /* ====================================================== */
-/* GET USER BY ID */
+/* GET USER BY ID                                         */
 /* ====================================================== */
 
 const getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password')
-
-    if (!user) {
-      return res.status(404).json({
-        message: 'User not found',
-      })
-    }
-
+    if (!user) return res.status(404).json({ message: 'User not found' })
     res.status(200).json(user)
   } catch (error) {
-    console.error('Get user error:', error)
-
-    res.status(500).json({
-      message: 'Error fetching user',
-    })
+    console.error('❌ [GET-USER-BY-ID] Error:', error)
+    res.status(500).json({ message: 'Error fetching user' })
   }
 }
 
 /* ====================================================== */
-/* BECOME ORGANIZER */
+/* BECOME ORGANIZER                                       */
 /* ====================================================== */
 
 const becomeOrganizer = async (req, res) => {
+  const reqId = Date.now()
+  console.log(`\n🚀 [${reqId}] BECOME-ORGANIZER HIT`)
+  console.log(`   ├─ req.user:`, JSON.stringify(req.user))
+  console.log(`   ├─ req.body:`, JSON.stringify(req.body))
+  console.log(`   └─ auth header:`, req.headers.authorization?.substring(0, 50))
+
   const { organizerName, organizationName, category } = req.body
 
   try {
+    console.log(`🔍 [${reqId}] Finding user: ${req.user._id}`)
     const user = await User.findById(req.user._id)
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-        data: {},
-        error: 'USER_NOT_FOUND',
+      console.error(`❌ [${reqId}] User NOT FOUND in DB`)
+      return res.status(404).json({ success: false, message: 'User not found', error: 'USER_NOT_FOUND' })
+    }
+
+    console.log(`✅ [${reqId}] Found: ${user.email} | current role: "${user.role}"`)
+
+    if (user.role === 'organizer') {
+      console.warn(`⚠️ [${reqId}] Already organizer — returning fresh token`)
+      const freshToken = generateToken(user)
+      return res.status(400).json({
+        success: false, message: 'You are already an organizer',
+        token: freshToken, error: 'ALREADY_ORGANIZER',
       })
     }
 
-    if (user.role === 'organizer') {
-      return res.status(400).json({
-        success: false,
-        message: 'You are already an organizer',
-        data: {},
-        error: 'ALREADY_ORGANIZER',
-      })
-    }
+    console.log(`📝 [${reqId}] Setting role = 'organizer'`)
+    console.log(`   └─ isModified before:`, user.isModified('role'))
 
     user.role = 'organizer'
     user.organizerName = organizerName || user.name
     user.organizationName = organizationName || ''
     user.category = category || ''
 
-    await user.save()
+    console.log(`   └─ user.role before save:`, user.role)
+    console.log(`   └─ isModified after:`, user.isModified('role'))
 
-    await createAuditLog('USER_BECAME_ORGANIZER', user._id, null, {
-      userId: user._id,
-      oldRole: 'user',
-      newRole: 'organizer',
-    })
+    await user.save()
+    console.log(`💾 [${reqId}] user.save() complete`)
+
+    // Immediately re-fetch to confirm DB write
+    const verify = await User.findById(user._id).select('role email')
+    console.log(`🔎 [${reqId}] DB VERIFY: email=${verify.email} | role="${verify.role}"`)
+
+    if (verify.role !== 'organizer') {
+      console.error(`🔥 [${reqId}] SILENT WRITE FAIL — DB still shows role: "${verify.role}"`)
+      return res.status(500).json({
+        success: false,
+        message: 'Role update failed silently in DB',
+        error: 'DB_WRITE_FAILED',
+      })
+    }
+
+    const newToken = generateToken(user)
+    console.log(`🔑 [${reqId}] New token issued | role in payload: "organizer"`)
+    console.log(`✅ [${reqId}] Sending 200 success response`)
 
     res.status(200).json({
       success: true,
       message: 'Successfully activated as organizer',
+      token: newToken,
       data: {
         user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
+          id: user._id, name: user.name, email: user.email, role: user.role,
           organizerName: user.organizerName,
           organizationName: user.organizationName,
           category: user.category,
@@ -429,31 +303,15 @@ const becomeOrganizer = async (req, res) => {
       error: null,
     })
   } catch (error) {
-    console.error('Become organizer error:', error)
-    paymentLogger.logPaymentEvent(
-      'BECOME_ORGANIZER_ERROR',
-      req.user?._id,
-      null,
-      null,
-      error,
-    )
-
-    res.status(500).json({
-      success: false,
-      message: 'Error activating organizer',
-      data: {},
-      error: error.message,
-    })
+    console.error(`💥 [${reqId}] EXCEPTION:`)
+    console.error(`   ├─ message:`, error.message)
+    console.error(`   ├─ name:`, error.name)
+    console.error(`   └─ stack:`, error.stack)
+    res.status(500).json({ success: false, message: 'Error activating organizer', error: error.message })
   }
 }
 
 module.exports = {
-  register,
-  login,
-  getProfile,
-  updateProfile,
-  uploadProfilePhoto,
-  changePassword,
-  getUserById,
-  becomeOrganizer,
+  register, login, getProfile, updateProfile,
+  uploadProfilePhoto, changePassword, getUserById, becomeOrganizer,
 }

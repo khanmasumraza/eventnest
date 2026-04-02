@@ -96,11 +96,6 @@ const daysUntil = (d) => {
   return Math.ceil(diff / 86400000);
 };
 
-const hoursUntil = (d) => {
-  const diff = new Date(d) - new Date();
-  return Math.floor(diff / 3600000);
-};
-
 const relativeTime = (dateStr) => {
   const now = new Date();
   const date = new Date(dateStr);
@@ -191,12 +186,25 @@ function Dashboard() {
   const [favCount, setFavCount]   = useState(0);
   const [, setTick] = useState(0);
 
+  // ─── FIX: If user becomes organizer, immediately redirect away ───────────
   useEffect(() => {
-    if (!user) { navigate("/login"); return; }
+    if (!user) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    // KEY FIX: Dashboard is only for regular users.
+    // If user.role is organizer (e.g. after becoming one), send them to their dashboard.
+    if (user.role === "organizer") {
+      navigate("/organiser/dashboard", { replace: true });
+      return;
+    }
+
     fetchUserData();
     const interval = setInterval(() => setTick(t => t + 1), 60000);
     return () => clearInterval(interval);
   }, [user]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   const fetchUserData = async () => {
     try {
@@ -205,12 +213,8 @@ function Dashboard() {
       console.log("🎫 Tickets:", res.data);
       setTickets(res.data || []);
 
-      // fetch favorites count from user profile
       try {
-        const token = localStorage.getItem("token");
-        const profileRes = await api.get("/auth/profile", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const profileRes = await api.get("/auth/profile");
         const favs = profileRes.data?.favorites || profileRes.data?.user?.favorites || [];
         setFavCount(favs.length);
       } catch (e) {
@@ -227,6 +231,9 @@ function Dashboard() {
   const upcoming       = tickets.filter((t) => new Date(t.event?.date) >= new Date());
   const past           = tickets.filter((t) => new Date(t.event?.date) < new Date());
   const recentActivity = tickets.slice(0, 4);
+
+  // Don't render anything while redirecting organizers
+  if (!user || user.role === "organizer") return null;
 
   if (loading) {
     return (
@@ -383,7 +390,7 @@ function Dashboard() {
                 )}
               </div>
 
-              {/* STAT CARDS — favorites now shows real count */}
+              {/* STAT CARDS */}
               <div className="db-fade-3 db-stat-row" style={{ display: "flex", gap: 10, flexShrink: 0 }}>
                 <StatCard label="Upcoming" value={upcoming.length} icon="🗓" accent="#6366f1"
                   subLabel={upcoming.length > 0 ? `Next in ${daysUntil(upcoming[0]?.event?.date)}d` : "No events yet"}
@@ -401,7 +408,7 @@ function Dashboard() {
                 />
               </div>
 
-              {/* FILLER / UPCOMING LIST */}
+              {/* UPCOMING LIST */}
               {upcoming.length <= 1 && (
                 <div className="db-fade-4" style={{
                   flex: 1, minHeight: 0, background: "#0f1623",
