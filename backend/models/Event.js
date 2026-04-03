@@ -170,7 +170,7 @@ const eventSchema = new mongoose.Schema(
 
     ticketPrice: {
       type: Number,
-      min: 1,
+      min: 0,
       default: 1,
     },
 

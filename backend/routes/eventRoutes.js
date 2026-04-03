@@ -31,6 +31,8 @@ const {
   getMyReminders,
   getEventUpdates,
   getRecommendedEvents,
+  updateEvent,
+  deleteEvent,
 } = require('../controllers/eventController')
 
 const { protect } = require('../middleware/authMiddleware')
@@ -119,6 +121,13 @@ router.get('/:id/ticket', protect, getMyTicket)
 router.get('/:id/attendees', getEventAttendees)
 router.get('/:id/share', getEventShare)
 router.get('/:id/updates', getEventUpdates)
+
+/* ---------------------------------------------------------- */
+/* EVENT UPDATE & DELETE */
+/* ---------------------------------------------------------- */
+
+router.put('/:id', protect, updateEvent)
+router.delete('/:id', protect, deleteEvent)
 
 /* ---------------------------------------------------------- */
 /* EVENT BY ID (KEEP LAST) */

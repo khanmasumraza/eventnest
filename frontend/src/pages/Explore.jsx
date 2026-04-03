@@ -87,120 +87,172 @@ function Explore() {
   const { user }   = useAuth();
   const navigate   = useNavigate();
 
-  const [events, setEvents]                   = useState([]);
-  const [filteredEvents, setFilteredEvents]   = useState([]);
-  const [search, setSearch]                   = useState("");
-  const [category, setCategory]               = useState("All");
-  const [city, setCity]                       = useState("All");
-  const [cities, setCities]                   = useState(["All"]);
-  const [favorites, setFavorites]             = useState([]);
-  const [registeredEvents, setRegisteredEvents] = useState([]); // NEW
+  const [events, setEvents]                     = useState([]);
+  const [filteredEvents, setFilteredEvents]     = useState([]);
+  const [search, setSearch]                     = useState("");
+  const [category, setCategory]                 = useState("All");
+  const [city, setCity]                         = useState("All");
+  const [cities, setCities]                     = useState(["All"]);
+  const [favorites, setFavorites]               = useState([]);
+  const [registeredEvents, setRegisteredEvents] = useState([]);
 
+  // ── Load favorites + registrations ──────────────────────────────
   useEffect(() => {
-    if (!user) return
+    if (!user) return;
+
     const loadFavorites = async () => {
       try {
-        const token = localStorage.getItem('token')
-        const res = await api.get('/auth/profile', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const userFavs = res.data?.favorites || 
-                         res.data?.user?.favorites || []
-        setFavorites(userFavs.map(f => f._id || f))
+        const token = localStorage.getItem("token");
+        const res = await api.get("/auth/profile", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const userFavs = res.data?.favorites || res.data?.user?.favorites || [];
+        setFavorites(userFavs.map(f => f._id || f));
       } catch (err) {
-        console.log('Could not load favorites:', err)
+        console.log("Could not load favorites:", err);
       }
-    }
+    };
 
     const loadRegistrations = async () => {
       try {
-        const token = localStorage.getItem('token')
-        const res = await api.get('/registrations/my-tickets', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        // res.data is array of tickets, each has { event: { _id, ... } }
+        const token = localStorage.getItem("token");
+        const res = await api.get("/registrations/my-tickets", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const ids = res.data
           .filter(t => t.event && t.event._id)
-          .map(t => t.event._id)
-        setRegisteredEvents(ids)
+          .map(t => t.event._id);
+        setRegisteredEvents(ids);
       } catch (err) {
-        console.log('Could not load registrations:', err)
+        console.log("Could not load registrations:", err);
       }
-    }
+    };
 
-    loadFavorites()
-    loadRegistrations()
-  }, [user])
+    loadFavorites();
+    loadRegistrations();
+  }, [user]);
 
+  // ── Fetch & process events ───────────────────────────────────────
   useEffect(() => {
     const fetchEvents = async () => {
       try {
         const res = await api.get("/events");
+
+        // 1️⃣ Extract array from whatever shape the API returns
         let eventData = [];
-        if (Array.isArray(res.data)) eventData = res.data;
-        else if (res.data?.events && Array.isArray(res.data.events)) eventData = res.data.events;
-        else if (typeof res.data === "object") {
+        if (Array.isArray(res.data)) {
+          eventData = res.data;
+        } else if (res.data?.events && Array.isArray(res.data.events)) {
+          eventData = res.data.events;
+        } else if (typeof res.data === "object") {
           const possibleArray = Object.values(res.data).find(v => Array.isArray(v));
           if (possibleArray) eventData = possibleArray;
         }
-        setEvents(eventData);
-        setFilteredEvents(eventData);
-        setCities(["All", ...new Set(eventData.map(e => e.city).filter(Boolean))]);
+
+        // 2️⃣ FIX: Remove events with missing/null _id (prevents /event/null bug)
+        eventData = eventData.filter(e => e._id);
+
+        // 3️⃣ FIX: Auto-remove past events (compare from start of today)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const upcomingEvents = eventData
+          .filter(e => {
+            if (!e.date) return true; // keep if no date
+            return new Date(e.date) >= today;
+          })
+          // 4️⃣ FIX: Sort ascending by date → oldest first, newest at bottom
+          .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        // 5️⃣ FIX: Capitalize city names for display (DB stores lowercase)
+        const capitalize = str =>
+          str ? str.charAt(0).toUpperCase() + str.slice(1) : "";
+
+        const uniqueCities = [
+          "All",
+          ...new Set(
+            upcomingEvents.map(e => capitalize(e.city)).filter(Boolean)
+          ),
+        ];
+
+        setEvents(upcomingEvents);
+        setFilteredEvents(upcomingEvents);
+        setCities(uniqueCities);
       } catch (err) {
         console.error("Unable to load events", err);
-        setEvents([]); setFilteredEvents([]);
+        setEvents([]);
+        setFilteredEvents([]);
       }
     };
+
     fetchEvents();
   }, []);
 
+  // ── Filter logic ─────────────────────────────────────────────────
   useEffect(() => {
     let filtered = [...events];
-    if (search)          filtered = filtered.filter(e => e.title?.toLowerCase().includes(search.toLowerCase()));
-    if (category !== "All") filtered = filtered.filter(e => e.category === category);
-    if (city !== "All")     filtered = filtered.filter(e => e.city === city);
+
+    if (search) {
+      filtered = filtered.filter(e =>
+        e.title?.toLowerCase().includes(search.toLowerCase()) ||
+        e.city?.toLowerCase().includes(search.toLowerCase()) ||
+        e.category?.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+
+    if (category !== "All") {
+      filtered = filtered.filter(e => e.category === category);
+    }
+
+    // 6️⃣ FIX: Case-insensitive city compare (DB = lowercase, dropdown = capitalized)
+    if (city !== "All") {
+      filtered = filtered.filter(
+        e => e.city?.toLowerCase() === city.toLowerCase()
+      );
+    }
+
     setFilteredEvents(filtered);
   }, [search, category, city, events]);
 
+  // ── Toggle favorite ──────────────────────────────────────────────
   const handleToggleFavorite = async (eventId) => {
-    if (!user) { return }
-    const token = localStorage.getItem('token')
-    const isCurrentlyFav = favorites.includes(eventId)
-    
-    // Optimistic UI update first
+    if (!user) return;
+    const token = localStorage.getItem("token");
+    const isCurrentlyFav = favorites.includes(eventId);
+
     setFavorites(prev =>
-      isCurrentlyFav
-        ? prev.filter(id => id !== eventId)
-        : [...prev, eventId]
-    )
-    
+      isCurrentlyFav ? prev.filter(id => id !== eventId) : [...prev, eventId]
+    );
+
     try {
       await api.post(
         `/events/${eventId}/favorite`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
-      )
+      );
     } catch (err) {
-      // Revert on failure
-      console.error('Favorite toggle failed:', err)
+      console.error("Favorite toggle failed:", err);
       setFavorites(prev =>
-        isCurrentlyFav
-          ? [...prev, eventId]
-          : prev.filter(id => id !== eventId)
-      )
+        isCurrentlyFav ? [...prev, eventId] : prev.filter(id => id !== eventId)
+      );
     }
   };
 
+  // ── Render ───────────────────────────────────────────────────────
   return (
     <>
       <style>{STYLES}</style>
-      <div className="ex-root" style={{ minHeight: "100vh", background: "#080c14", padding: "32px 0 80px" }}>
+      <div
+        className="ex-root"
+        style={{ minHeight: "100vh", background: "#080c14", padding: "32px 0 80px" }}
+      >
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px" }}>
 
-          {/* ── HEADER ── */}
+          {/* HEADER */}
           <motion.div
-            initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: .4, ease: [.22,1,.36,1] }}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             style={{ marginBottom: 24 }}
           >
             <h1 style={{ fontSize: 24, fontWeight: 800, color: "#f0f4ff", margin: "0 0 4px" }}>
@@ -211,10 +263,11 @@ function Explore() {
             </p>
           </motion.div>
 
-          {/* ── FILTER BAR ── */}
+          {/* FILTER BAR */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: .4, ease: [.22,1,.36,1], delay: .05 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
             style={{
               background: "#0f1623",
               border: "1px solid rgba(255,255,255,.07)",
@@ -224,12 +277,16 @@ function Explore() {
             }}
           >
             <div className="ex-filter-row" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+
               {/* Search */}
               <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
                 <svg
                   width="16" height="16" fill="none" stroke="#4b5563" strokeWidth="2"
                   viewBox="0 0 24 24"
-                  style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+                  style={{
+                    position: "absolute", left: 14, top: "50%",
+                    transform: "translateY(-50%)", pointerEvents: "none",
+                  }}
                 >
                   <circle cx="11" cy="11" r="8" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" />
@@ -243,10 +300,14 @@ function Explore() {
                 />
               </div>
 
-              {/* Selects */}
+              {/* Dropdowns */}
               <div className="ex-select-row" style={{ display: "flex", gap: 10 }}>
                 <div className="ex-select-wrap">
-                  <select className="ex-select" value={category} onChange={e => setCategory(e.target.value)}>
+                  <select
+                    className="ex-select"
+                    value={category}
+                    onChange={e => setCategory(e.target.value)}
+                  >
                     <option value="All">All Categories</option>
                     <option value="Hackathon">Hackathon</option>
                     <option value="Fest">Fest</option>
@@ -255,18 +316,27 @@ function Explore() {
                     <option value="Cultural">Cultural</option>
                     <option value="Sports">Sports</option>
                     <option value="Meetup">Meetup</option>
+                    <option value="Other">Other</option>
                   </select>
                 </div>
                 <div className="ex-select-wrap">
-                  <select className="ex-select" value={city} onChange={e => setCity(e.target.value)}>
-                    {cities.map(c => <option key={c} value={c}>{c === "All" ? "All Cities" : c}</option>)}
+                  <select
+                    className="ex-select"
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                  >
+                    {cities.map(c => (
+                      <option key={c} value={c}>
+                        {c === "All" ? "All Cities" : c}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
             </div>
           </motion.div>
 
-          {/* ── COUNT ── */}
+          {/* COUNT */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
             <span style={{
               fontSize: 11, fontWeight: 700, letterSpacing: ".07em",
@@ -282,7 +352,7 @@ function Explore() {
             </span>
           </div>
 
-          {/* ── GRID ── */}
+          {/* GRID */}
           {filteredEvents.length === 0 ? (
             <div className="ex-empty">
               <span style={{ fontSize: 40, marginBottom: 16 }}>🔍</span>
@@ -295,7 +365,8 @@ function Explore() {
             </div>
           ) : (
             <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
@@ -308,10 +379,16 @@ function Explore() {
                   event={event}
                   index={index}
                   isAuthenticated={!!user}
-                  onRegister={id => navigate(`/event/${id}`)}
+                  onRegister={id => {
+                    if (!id) {
+                      console.error("Invalid event ID:", event);
+                      return;
+                    }
+                    navigate(`/event/${id}`);
+                  }}
                   isFavorite={favorites.includes(event._id)}
                   onToggleFavorite={handleToggleFavorite}
-                  isRegistered={registeredEvents.includes(event._id)} // NEW
+                  isRegistered={registeredEvents.includes(event._id)}
                 />
               ))}
             </motion.div>

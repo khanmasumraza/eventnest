@@ -123,10 +123,14 @@ function Checkout() {
   const [processing, setProcessing] = useState(false)
   const [error, setError]           = useState('')
   const [step, setStep]             = useState(1)
-  const [btnLoading, setBtnLoading] = useState(false)
 
-  const hasCalledRef = useRef(false)
-  useEffect(() => { hasCalledRef.current = false }, [id])
+  // Ref to prevent any double-submit across the entire component lifetime for this event
+  const isSubmittingRef = useRef(false)
+
+  useEffect(() => {
+    // Reset submission guard when event id changes
+    isSubmittingRef.current = false
+  }, [id])
 
   const [attendeeInfo, setAttendeeInfo] = useState({
     name:    user?.name    || '',
@@ -136,7 +140,6 @@ function Checkout() {
     batch:   user?.batch   || '',
   })
 
-  const [razorpayOrder, setRazorpayOrder] = useState(null)
   const [paymentResult, setPaymentResult] = useState(null)
   const [verifying, setVerifying]         = useState(false)
 
@@ -183,13 +186,15 @@ function Checkout() {
     if (missing.length > 0) { setError(`Please fill in: ${missing.join(', ')}`); return false }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (attendeeInfo.email && !emailRegex.test(attendeeInfo.email)) { setError('Please enter a valid email'); return false }
-    setError(''); return true
+    setError('')
+    return true
   }
 
   const handleRazorpayPayment = async () => {
     if (!validateDetails()) return
     try {
-      setProcessing(true); setError('')
+      setProcessing(true)
+      setError('')
       const token = localStorage.getItem('token')
       const res = await axios.post(`${API_URL}/payments/create-order`, { eventId: id, attendeeInfo }, {
         headers: { Authorization: `Bearer ${token}` },
@@ -207,13 +212,12 @@ function Checkout() {
           handler: async function (response) {
             setVerifying(true)
             const verifyRes = await axios.post(`${API_URL}/payments/verify`, {
-              razorpay_order_id:  response.razorpay_order_id,
+              razorpay_order_id:   response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
+              razorpay_signature:  response.razorpay_signature,
               eventId: id,
               attendeeInfo,
             }, { headers: { Authorization: `Bearer ${token}` } })
-            console.log('🚀 REDIRECTING TO:', `/ticket/${verifyRes.data.ticketId}`)
             if (verifyRes.data.success) {
               navigate(`/ticket/${verifyRes.data.ticketId}`)
             } else {
@@ -237,61 +241,56 @@ function Checkout() {
   }
 
   const loadRazorpay = useCallback(() => {
+    if (document.querySelector('script[src*="razorpay"]')) return
     const script = document.createElement('script')
     script.src = 'https://checkout.razorpay.com/v1/checkout.js'
     script.async = true
-    script.onload = () => console.log('Razorpay loaded')
     document.body.appendChild(script)
   }, [])
 
-const proceed = async () => {
-  if (hasCalledRef.current) return
-  if (!validateDetails()) return
-
-  hasCalledRef.current = true
-
-  try {
+  // The single entry-point for the Continue button on step 1
+  const proceed = async () => {
+    if (!validateDetails()) return
     if (isFree) {
       await registerFree()
     } else {
-      hasCalledRef.current = false
       setStep(2)
     }
-  } catch (err) {
-    hasCalledRef.current = false
-    setProcessing(false)
   }
-}
 
-const registerFree = async () => {
-  try {
+  const registerFree = async () => {
+    // Hard guard: if a request is already in-flight, do nothing
+    if (isSubmittingRef.current) return
+    isSubmittingRef.current = true
+
     setProcessing(true)
     setError('')
-    const token = localStorage.getItem('token')
-    const res = await axios.post(`${API_URL}/events/${id}/register`, { attendeeInfo }, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
 
-    if (res.data?.success) {
-      setPaymentResult(res.data)
-      setStep(3)
-    } else {
-      throw new Error('Registration failed')
+    try {
+      const token = localStorage.getItem('token')
+      const res = await axios.post(
+        `${API_URL}/events/${id}/register`,
+        { attendeeInfo },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+
+      // Backend returns { success: true, registration: {...} } for both
+      // new registrations AND already-registered (idempotent 200)
+      if (res.data?.success) {
+        setPaymentResult(res.data)
+        setStep(3)
+      } else {
+        throw new Error('Registration failed')
+      }
+    } catch (err) {
+      console.error('registerFree error:', err)
+      const msg = err.response?.data?.message || 'Registration failed. Please try again.'
+      setError(msg)
+      // Only release the guard on error so user can retry
+      isSubmittingRef.current = false
+    } finally {
+      setProcessing(false)
     }
-  } catch (err) {
-    console.error(err)
-    setError(err.response?.data?.message || 'Registration failed')
-    throw err
-  } finally {
-    setProcessing(false)
-  }
-}
-
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text)
-    alert('UPI ID copied to clipboard!')
   }
 
   /* ── LOADING ── */
@@ -313,11 +312,10 @@ const registerFree = async () => {
     )
   }
 
-  const eventDate  = new Date(event.date)
-  const isFree     = event.paymentType === 'free' || !event.ticketPrice || event.ticketPrice === 0
+  const eventDate      = new Date(event.date)
+  const isFree         = event.paymentType === 'free' || !event.ticketPrice || event.ticketPrice === 0
   const requiredFields = event.requiredFields || ['name', 'email']
-
-  const stepLabels = ['Details', 'Payment', 'Confirmed']
+  const stepLabels     = ['Details', 'Payment', 'Confirmed']
 
   return (
     <>
@@ -349,97 +347,86 @@ const registerFree = async () => {
       </AnimatePresence>
 
       <div className="ck-root" style={{ minHeight: "100vh", background: "#080c14", padding: "40px 0 80px" }}>
-      <div style={{ maxWidth: 920, margin: "0 auto", padding: "0 24px" }}>
+        <div style={{ maxWidth: 920, margin: "0 auto", padding: "0 24px" }}>
 
-          <div style={{
-  textAlign: "center",
-  marginBottom: 20,
-}}>
-  <p style={{
-    fontSize: 13, fontWeight: 600,
-    color: "#9ca3af", margin: "0 0 5px",
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
-    overflow: "hidden", textOverflow: "ellipsis",
-    whiteSpace: "nowrap", maxWidth: 440,
-    marginLeft: "auto", marginRight: "auto",
-  }}>
-    🎪 {event?.title || "Event Registration"}
-  </p>
-  <div style={{
-    display: "inline-flex", alignItems: "center",
-    gap: 6,
-    padding: "4px 12px",
-    background: "rgba(99,102,241,.08)",
-    border: "1px solid rgba(99,102,241,.2)",
-    borderRadius: 99,
-  }}>
-    <div style={{
-      width: 5, height: 5, borderRadius: "50%",
-      background: "#6366f1",
-      boxShadow: "0 0 4px rgba(99,102,241,.8)",
-    }} />
-    <span style={{
-      fontSize: 11, fontWeight: 700,
-      letterSpacing: ".07em", color: "#6366f1",
-      textTransform: "uppercase",
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
-    }}>
-      {step === 1 && "Step 1 of 3 — Fill your details"}
-      {step === 2 && "Step 2 of 3 — Payment"}
-      {step === 3 && "Step 3 of 3 — Confirmed"}
-    </span>
-  </div>
-</div>
+          <div style={{ textAlign: "center", marginBottom: 20 }}>
+            <p style={{
+              fontSize: 13, fontWeight: 600,
+              color: "#9ca3af", margin: "0 0 5px",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              overflow: "hidden", textOverflow: "ellipsis",
+              whiteSpace: "nowrap", maxWidth: 440,
+              marginLeft: "auto", marginRight: "auto",
+            }}>
+              🎪 {event?.title || "Event Registration"}
+            </p>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "4px 12px",
+              background: "rgba(99,102,241,.08)",
+              border: "1px solid rgba(99,102,241,.2)",
+              borderRadius: 99,
+            }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#6366f1", boxShadow: "0 0 4px rgba(99,102,241,.8)" }} />
+              <span style={{
+                fontSize: 11, fontWeight: 700,
+                letterSpacing: ".07em", color: "#6366f1",
+                textTransform: "uppercase",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+              }}>
+                {step === 1 && "Step 1 of 3 — Fill your details"}
+                {step === 2 && "Step 2 of 3 — Payment"}
+                {step === 3 && "Step 3 of 3 — Confirmed"}
+              </span>
+            </div>
+          </div>
 
           {/* ── STEP INDICATOR ── */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0, marginBottom: 20 }}>
-{[1, 2, 3].map((s) => {
-                const circleStyle = {
-                  width: 32, height: 32, borderRadius: "50%",
-                  background: step >= s ? "#6366f1" : "rgba(255,255,255,.05)",
-                  border: step >= s ? "none" : "1px solid rgba(255,255,255,.08)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 13, fontWeight: 700,
-                  color: step >= s ? "#fff" : "#374151",
-                  boxShadow: step === s ? "0 0 16px rgba(99,102,241,.4)" : "none",
-                  transition: "all .3s ease",
-                };
-                return (
-                  <React.Fragment key={s}>
-                    <div
-                      onClick={() => {
-                        if (s < step) setStep(s)
-                      }}
-                      style={{
-                        display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                        cursor: s < step ? "pointer" : "default",
-                      }}
-                    >
-                      <div style={circleStyle}>
-                        {step > s ? (
-                          <svg width="14" height="14" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : s}
-                      </div>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, letterSpacing: ".06em",
-                        color: step >= s ? "#6366f1" : "#374151",
-                        textTransform: "uppercase",
-                        transition: "color .3s ease",
-                      }}>
-                        {stepLabels[s - 1]}
-                      </span>
+            {[1, 2, 3].map((s) => {
+              const circleStyle = {
+                width: 32, height: 32, borderRadius: "50%",
+                background: step >= s ? "#6366f1" : "rgba(255,255,255,.05)",
+                border: step >= s ? "none" : "1px solid rgba(255,255,255,.08)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: 700,
+                color: step >= s ? "#fff" : "#374151",
+                boxShadow: step === s ? "0 0 16px rgba(99,102,241,.4)" : "none",
+                transition: "all .3s ease",
+              }
+              return (
+                <React.Fragment key={s}>
+                  <div
+                    onClick={() => { if (s < step) setStep(s) }}
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                      cursor: s < step ? "pointer" : "default",
+                    }}
+                  >
+                    <div style={circleStyle}>
+                      {step > s ? (
+                        <svg width="14" height="14" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : s}
                     </div>
-                    {s < 3 && (
-                      <div className="ck-step-line" style={{
-                        background: step > s ? "#6366f1" : "rgba(255,255,255,.06)",
-                        marginBottom: 20,
-                      }} />
-                    )}
-                  </React.Fragment>
-                );
-              })}
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: ".06em",
+                      color: step >= s ? "#6366f1" : "#374151",
+                      textTransform: "uppercase", transition: "color .3s ease",
+                    }}>
+                      {stepLabels[s - 1]}
+                    </span>
+                  </div>
+                  {s < 3 && (
+                    <div className="ck-step-line" style={{
+                      background: step > s ? "#6366f1" : "rgba(255,255,255,.06)",
+                      marginBottom: 20,
+                    }} />
+                  )}
+                </React.Fragment>
+              )
+            })}
           </div>
 
           {/* ── ERROR ── */}
@@ -516,14 +503,9 @@ const registerFree = async () => {
 
                     <button
                       onClick={proceed}
-                      disabled={processing || btnLoading}
+                      disabled={processing}
                       className="ck-btn-primary"
-                      style={{
-                        marginTop: 24,
-                        background: "#6366f1",
-                        color: "#fff",
-                        boxShadow: "0 4px 20px rgba(99,102,241,.35)",
-                      }}
+                      style={{ marginTop: 24, background: "#6366f1", color: "#fff", boxShadow: "0 4px 20px rgba(99,102,241,.35)" }}
                     >
                       {processing ? (
                         <>
@@ -553,7 +535,6 @@ const registerFree = async () => {
                     </div>
 
                     {isFree ? (
-                      /* FREE EVENT */
                       <div style={{ textAlign: "center", padding: "24px 0" }}>
                         <div style={{
                           width: 64, height: 64, borderRadius: "50%",
@@ -563,9 +544,7 @@ const registerFree = async () => {
                         }}>
                           🎉
                         </div>
-                        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#f0f4ff", margin: "0 0 6px" }}>
-                          Free Event
-                        </h3>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, color: "#f0f4ff", margin: "0 0 6px" }}>Free Event</h3>
                         <p style={{ fontSize: 13, color: "#4b5563", margin: "0 0 24px", lineHeight: 1.6 }}>
                           No payment needed. Click below to complete your registration.
                         </p>
@@ -573,11 +552,7 @@ const registerFree = async () => {
                           onClick={registerFree}
                           disabled={processing}
                           className="ck-btn-primary"
-                          style={{
-                            background: "#43e8b0",
-                            color: "#080c14",
-                            boxShadow: "0 4px 20px rgba(67,232,176,.3)",
-                          }}
+                          style={{ background: "#43e8b0", color: "#080c14", boxShadow: "0 4px 20px rgba(67,232,176,.3)" }}
                         >
                           {processing ? (
                             <>
@@ -590,10 +565,7 @@ const registerFree = async () => {
                         </button>
                       </div>
                     ) : (
-                      /* PAID EVENT — RAZORPAY ONLY */
                       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-                        {/* Amount summary */}
                         <div style={{
                           background: "#080c14",
                           border: "1px solid rgba(255,255,255,.07)",
@@ -602,13 +574,6 @@ const registerFree = async () => {
                           display: "flex", alignItems: "center", justifyContent: "space-between",
                         }}>
                           <div>
-                            <div style={{
-                              width: 6, height: 6, borderRadius: "50%",
-                              background: "#43e8b0",
-                              animation: "pulse-dot 1.8s ease-in-out infinite",
-                              display: "inline-block", marginRight: 6,
-                              boxShadow: "0 0 4px rgba(67,232,176,.6)",
-                            }} />
                             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", color: "#4b5563", textTransform: "uppercase", margin: "0 0 5px" }}>
                               Amount Due
                             </p>
@@ -618,25 +583,16 @@ const registerFree = async () => {
                           </div>
                           <div style={{
                             width: 48, height: 48, borderRadius: 13,
-                            background: "rgba(99,102,241,.15)",
-                            border: "1px solid rgba(99,102,241,.2)",
+                            background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.2)",
                             display: "flex", alignItems: "center", justifyContent: "center",
                           }}>
-                            <svg width="22" height="22" fill="none" 
-                              stroke="#a5b4fc" strokeWidth="1.8" 
-                              viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round"
-                                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                            <svg width="22" height="22" fill="none" stroke="#a5b4fc" strokeWidth="1.8" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
                             </svg>
                           </div>
                         </div>
 
-                        {/* Payment methods info */}
-                        <div style={{
-                          background: "#080c14",
-                          border: "1px solid rgba(255,255,255,.07)",
-                          borderRadius: 14, padding: "16px 20px",
-                        }}>
+                        <div style={{ background: "#080c14", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "16px 20px" }}>
                           <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", color: "#4b5563", textTransform: "uppercase", margin: "0 0 14px" }}>
                             Accepted Payment Methods
                           </p>
@@ -644,8 +600,7 @@ const registerFree = async () => {
                             {["📱 GPay", "📲 PhonePe", "💰 Paytm", "🏦 UPI"].map(m => (
                               <span key={m} style={{
                                 fontSize: 12, fontWeight: 600, color: "#6b7280",
-                                background: "rgba(255,255,255,.04)",
-                                border: "1px solid rgba(255,255,255,.07)",
+                                background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)",
                                 padding: "6px 12px", borderRadius: 99,
                               }}>
                                 {m}
@@ -654,18 +609,11 @@ const registerFree = async () => {
                           </div>
                         </div>
 
-                        {/* Pay button */}
                         <button
                           onClick={handleRazorpayPayment}
                           disabled={processing}
                           className="ck-btn-primary"
-                          style={{
-                            background: "#6366f1",
-                            color: "#fff",
-                            boxShadow: "0 4px 24px rgba(99,102,241,.4)",
-                            fontSize: 16,
-                            letterSpacing: ".03em",
-                          }}
+                          style={{ background: "#6366f1", color: "#fff", boxShadow: "0 4px 24px rgba(99,102,241,.4)", fontSize: 16, letterSpacing: ".03em" }}
                         >
                           {processing ? (
                             <>
@@ -673,23 +621,14 @@ const registerFree = async () => {
                               Opening Payment…
                             </>
                           ) : (
-                            <>
-                              🔒 Pay ₹{event.ticketPrice} Securely
-                            </>
+                            <>🔒 Pay ₹{event.ticketPrice} Securely</>
                           )}
                         </button>
 
-                        {/* Trust badges */}
                         <div style={{ display: "flex", justifyContent: "center", gap: 20, flexWrap: "wrap" }}>
-                          <div className="ck-trust-badge">
-                            <span>🔒</span> 256-bit SSL
-                          </div>
-                          <div className="ck-trust-badge">
-                            <span>✅</span> Powered by Razorpay
-                          </div>
-                          <div className="ck-trust-badge">
-                            <span>🛡️</span> PCI DSS Secure
-                          </div>
+                          <div className="ck-trust-badge"><span>🔒</span> 256-bit SSL</div>
+                          <div className="ck-trust-badge"><span>✅</span> Powered by Razorpay</div>
+                          <div className="ck-trust-badge"><span>🛡️</span> PCI DSS Secure</div>
                         </div>
                       </div>
                     )}
@@ -711,8 +650,7 @@ const registerFree = async () => {
                       className="ck-success-dot"
                       style={{
                         width: 72, height: 72, borderRadius: "50%",
-                        background: "rgba(67,232,176,.12)",
-                        border: "1px solid rgba(67,232,176,.25)",
+                        background: "rgba(67,232,176,.12)", border: "1px solid rgba(67,232,176,.25)",
                         display: "flex", alignItems: "center", justifyContent: "center",
                         margin: "0 auto 20px", fontSize: 32,
                       }}
@@ -729,10 +667,10 @@ const registerFree = async () => {
                         : 'Payment submitted. Organizer will verify and confirm your ticket.'}
                     </p>
 
-                    {paymentResult?.registration && (
+                    {/* Show ticket ID — handle both new and duplicate-registration responses */}
+                    {(paymentResult?.registration?.ticketId || paymentResult?.ticketId) && (
                       <div style={{
-                        background: "#080c14",
-                        border: "1px solid rgba(255,255,255,.07)",
+                        background: "#080c14", border: "1px solid rgba(255,255,255,.07)",
                         borderRadius: 12, padding: "14px 18px",
                         marginBottom: 24, display: "inline-block",
                       }}>
@@ -740,14 +678,17 @@ const registerFree = async () => {
                           Ticket ID
                         </p>
                         <p className="ck-mono" style={{ fontSize: 14, fontWeight: 700, color: "#6366f1", margin: 0 }}>
-                          {paymentResult.registration.ticketId}
+                          {paymentResult?.registration?.ticketId || paymentResult?.ticketId}
                         </p>
                       </div>
                     )}
 
                     {isFree ? (
                       <button
-                        onClick={() => navigate(`/ticket/${paymentResult?.registration?.ticketId}`)}
+                        onClick={() => {
+                          const ticketId = paymentResult?.registration?.ticketId || paymentResult?.ticketId
+                          navigate(`/ticket/${ticketId}`)
+                        }}
                         className="ck-btn-primary"
                         style={{ background: "#6366f1", color: "#fff", boxShadow: "0 4px 20px rgba(99,102,241,.35)" }}
                       >
@@ -774,7 +715,6 @@ const registerFree = async () => {
                   Order Summary
                 </p>
 
-                {/* Event thumbnail */}
                 <div style={{ display: "flex", gap: 12, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
                   <div style={{ width: 56, height: 56, borderRadius: 12, overflow: "hidden", flexShrink: 0, background: "#080c14" }}>
                     <img
@@ -793,7 +733,6 @@ const registerFree = async () => {
                   </div>
                 </div>
 
-                {/* Details */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 18, paddingBottom: 18, borderBottom: "1px solid rgba(255,255,255,.06)" }}>
                   {[
                     { label: "Venue",           value: event.venue || "TBD" },
@@ -807,15 +746,13 @@ const registerFree = async () => {
                   ))}
                 </div>
 
-                {/* Total */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: "#d1d5db" }}>Total</span>
                   <span className="ck-mono" style={{ fontSize: 22, fontWeight: 800, color: "#f0f4ff" }}>
-{isFree ? 'Free' : `₹${event.ticketPrice}`}
+                    {isFree ? 'Free' : `₹${event.ticketPrice}`}
                   </span>
                 </div>
 
-                {/* Secure note */}
                 {!isFree && (
                   <div style={{
                     marginTop: 16, padding: "10px 14px",
@@ -823,9 +760,7 @@ const registerFree = async () => {
                     borderRadius: 10, display: "flex", alignItems: "center", gap: 7,
                   }}>
                     <span style={{ fontSize: 14 }}>🔒</span>
-                    <span style={{ fontSize: 11, color: "#374151", fontWeight: 600 }}>
-                      Secured by Razorpay
-                    </span>
+                    <span style={{ fontSize: 11, color: "#374151", fontWeight: 600 }}>Secured by Razorpay</span>
                   </div>
                 )}
               </div>

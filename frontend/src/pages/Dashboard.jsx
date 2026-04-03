@@ -186,17 +186,10 @@ function Dashboard() {
   const [favCount, setFavCount]   = useState(0);
   const [, setTick] = useState(0);
 
-  // ─── FIX: If user becomes organizer, immediately redirect away ───────────
+  // ✅ Allow both users AND organizers to access dashboard
   useEffect(() => {
     if (!user) {
       navigate("/login", { replace: true });
-      return;
-    }
-
-    // KEY FIX: Dashboard is only for regular users.
-    // If user.role is organizer (e.g. after becoming one), send them to their dashboard.
-    if (user.role === "organizer") {
-      navigate("/organiser/dashboard", { replace: true });
       return;
     }
 
@@ -204,7 +197,6 @@ function Dashboard() {
     const interval = setInterval(() => setTick(t => t + 1), 60000);
     return () => clearInterval(interval);
   }, [user]);
-  // ─────────────────────────────────────────────────────────────────────────
 
   const fetchUserData = async () => {
     try {
@@ -232,8 +224,8 @@ function Dashboard() {
   const past           = tickets.filter((t) => new Date(t.event?.date) < new Date());
   const recentActivity = tickets.slice(0, 4);
 
-  // Don't render anything while redirecting organizers
-  if (!user || user.role === "organizer") return null;
+  // ✅ Only block if no user at all
+  if (!user) return null;
 
   if (loading) {
     return (
