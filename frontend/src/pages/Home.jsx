@@ -74,7 +74,6 @@ function Home() {
       return
     }
 
-    // Regular user — call API directly, no form
     try {
       const token = localStorage.getItem("token")
       const res = await api.put(
@@ -154,6 +153,10 @@ function Home() {
                 event={event}
                 isAuthenticated={!!user}
                 index={index}
+                onRegister={(id) => navigate(`/event/${id}`)}
+                isFavorite={false}
+                onToggleFavorite={() => {}}
+                isRegistered={false}
               />
             ))}
           </div>
